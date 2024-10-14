@@ -47,5 +47,7 @@ router.post("/update-profit-share-method", requireAuth, dashboardCtr.updateProfi
 
 /*billing*/
 router.post("/get-transaction-history", requireAuth, dashboardCtr.getTransactionHistory);
+router.post("/get-trading-history", requireAuth, dashboardCtr.getTradingHistory);
+router.post("/get-copier-trading-history", requireAuth, dashboardCtr.getCopierTradingHistory);
 
 module.exports = router;

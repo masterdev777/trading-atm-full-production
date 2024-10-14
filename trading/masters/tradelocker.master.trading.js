@@ -1,8 +1,12 @@
 const client = require("../../config/db/db.js");
 const axios = require("axios");
+const { v5: uuidv5 } = require('uuid');
+const moment = require("moment");
 const { TRADELOCKER_DEMO_BASIC_URL, TRADELOCKER_LIVE_BASIC_URL, tradelockerDemoAxios, tradelockerLiveAxios } = require("../config/tradelocker.config.js");
 const { metatrader4Axios } = require("../config/metatrader4.config.js");
 const { metatrader5Axios } = require("../config/metatrader5.config.js");
+
+const MY_NAMESPACE = uuidv5("https://tradingatmstg.wpenginepowered.com/", uuidv5.DNS);
 
 //This function is to initialize the previous positions (history_positions) of masters in database before start trading
 
@@ -513,6 +517,11 @@ let indexNum = 0;
 //   return (max - min) > criteria ? Math.floor(Math.random() * criteria * 1000) / 1000 : Math.floor(Math.random() * (max - min) * 1000) / 1000 + min;
 // }
 
+const calc_nearest_int = (input_number) => {
+  if (((input_number * 100) - Math.floor(input_number * 100)) >= 0.5) return (Math.floor(input_number * 100) + 1) / 100;
+  else return Math.floor(input_number * 100) / 100;
+}
+
 const risk_setting_func = (master_account_balance, copier_account, opened_position, pip_value, stop_loss, take_profit) => {
   const risk_type = copier_account.risk_type;
   const follow_tp_st = copier_account.follow_tp_st;
@@ -597,7 +606,7 @@ const calc_volume = (master_account_balance, copier_account_balance, risk_type, 
   return volume;
 }
 
-const runTradelockerTradingFunction = async () => {
+const runTradelockerTradingFunction = async (io, socketUsers) => {
   indexNum++;
   console.log(indexNum, "Tradelocker-master ----------> Start Run Trading Function", performance.now());
   //get all masters data
@@ -788,11 +797,38 @@ const runTradelockerTradingFunction = async () => {
                         axios(config)
                           .then(async (response) => {
                             if (response.data.s === "ok") {
+                              const myDate = new Date();
+                              const formattedDate = myDate.toISOString();
+                              const my_secret_name = JSON.stringify({
+                                time: moment(formattedDate).format('YYYY/MM/DD hh:mm:ss A'),
+                                type: "close_trade",
+                                account_id: tl_copier_account.rows[0].account_id,
+                                user_id: tl_copier_account.rows[0].user_id,
+                              });
+                              const uniqueId = uuidv5(my_secret_name, MY_NAMESPACE);
+                              const messages = await client.query(
+                                `INSERT INTO notifications
+                                (id, receiver_id, message, read, time, type)  
+                                VALUES ($1, $2, $3, $4, $5, $6)
+                                RETURNING *`,
+                                [
+                                  uniqueId,
+                                  tl_copier_account.rows[0].user_id,
+                                  "Tradelocker account " + tl_copier_account.rows[0].account_name + " closed " + ((real_qty > 0 ? calc_nearest_int(real_qty) : "all") + " lots of order ") + pair.copier_position_id + " at " + moment(formattedDate).format('YYYY/MM/DD hh:mm:ss A'),
+                                  false,
+                                  moment(formattedDate).format('YYYY/MM/DD hh:mm:ss A'),
+                                  "close_trade"
+                                ]
+                              );
+                              console.log(uniqueId, socketUsers);
+                              if (socketUsers[tl_copier_account.rows[0].user_id]) {
+                                io.to(tl_copier_account.rows[0].user_id).emit('notification', messages.rowCount > 0 ? messages.rows[0] : {});
+                              }
                               console.log(indexNum, " Tradelocker-master -----------> Delete Position Success!");
                             }
                           })
                           .catch((err) => {
-                            console.log(indexNum, " Tradelocker-master ----------> Delete Position Failed.", err.response?.data);
+                            console.log(indexNum, " Tradelocker-master ----------> Delete Position Failed.", err);
                           });
                       }
                       else {
@@ -846,6 +882,32 @@ const runTradelockerTradingFunction = async () => {
                             console.log("Tradelocker-master ----------> metatrader4 Order Close Error");
                             return;
                           }
+                          const myDate = new Date();
+                          const formattedDate = myDate.toISOString();
+                          const my_secret_name = JSON.stringify({
+                            time: moment(formattedDate).format('YYYY/MM/DD hh:mm:ss A'),
+                            type: "close_trade",
+                            account_id: mt4_copier_account.rows[0].account_id,
+                            user_id: mt4_copier_account.rows[0].user_id,
+                          });
+                          const uniqueId = uuidv5(my_secret_name, MY_NAMESPACE);
+                          const messages = await client.query(
+                            `INSERT INTO notifications
+                              (id, receiver_id, message, read, time, type)  
+                              VALUES ($1, $2, $3, $4, $5, $6)
+                              RETURNING *`,
+                            [
+                              uniqueId,
+                              mt4_copier_account.rows[0].user_id,
+                              "MT4 account " + mt4_copier_account.rows[0].account_name + " closed " + ((real_qty > 0 ? calc_nearest_int(real_qty) : "all") + " lots of order ") + pair.copier_order_id + " at " + moment(formattedDate).format('YYYY/MM/DD hh:mm:ss A'),
+                              false,
+                              moment(formattedDate).format('YYYY/MM/DD hh:mm:ss A'),
+                              "close_trade"
+                            ]
+                          );
+                          if (socketUsers[mt4_copier_account.rows[0].user_id]) {
+                            io.to(mt4_copier_account.rows[0].user_id).emit('notification', messages.rowCount > 0 ? messages.rows[0] : {});
+                          }
                           const closed_order_comment = closed_order.data.comment;
                           if (real_qty > 0 && closed_order_comment.includes("to")) {
                             const temp_split = closed_order_comment.split("#");
@@ -874,8 +936,8 @@ const runTradelockerTradingFunction = async () => {
                             );
                           }
                           console.log("Tradelocker-master ----------> close metatrader4 success", performance.now())
-                        }).catch(() => {
-                          console.log("Tradelocker-master ----------> metatrader4 order close error");
+                        }).catch((err) => {
+                          console.log("Tradelocker-master ----------> metatrader4 order close error", err);
                         })
                       }
                       else {
@@ -930,6 +992,32 @@ const runTradelockerTradingFunction = async () => {
                             console.log("Tradelocker-master ----------> metatrader4 Order Close Error");
                             return;
                           }
+                          const myDate = new Date();
+                          const formattedDate = myDate.toISOString();
+                          const my_secret_name = JSON.stringify({
+                            time: moment(formattedDate).format('YYYY/MM/DD hh:mm:ss A'),
+                            type: "close_trade",
+                            account_id: mt5_copier_account.rows[0].account_id,
+                            user_id: mt5_copier_account.rows[0].user_id,
+                          });
+                          const uniqueId = uuidv5(my_secret_name, MY_NAMESPACE);
+                          const messages = await client.query(
+                            `INSERT INTO notifications
+                              (id, receiver_id, message, read, time, type)  
+                              VALUES ($1, $2, $3, $4, $5, $6)
+                              RETURNING *`,
+                            [
+                              uniqueId,
+                              mt5_copier_account.rows[0].user_id,
+                              "MT5 account " + mt5_copier_account.rows[0].account_name + " closed " + ((real_qty > 0 ? calc_nearest_int(real_qty) : "all") + " lots of order ") + pair.copier_order_id + " at " + moment(formattedDate).format('YYYY/MM/DD hh:mm:ss A'),
+                              false,
+                              moment(formattedDate).format('YYYY/MM/DD hh:mm:ss A'),
+                              "close_trade"
+                            ]
+                          );
+                          if (socketUsers[mt5_copier_account.rows[0].user_id]) {
+                            io.to(mt5_copier_account.rows[0].user_id).emit('notification', messages.rowCount > 0 ? messages.rows[0] : {});
+                          }
                           // if (real_qty > 0) return;
                           // await client.query(
                           //   `UPDATE metatrader5_copiers
@@ -941,8 +1029,8 @@ const runTradelockerTradingFunction = async () => {
                           //   ]
                           // );
                           console.log("Tradelocker-master ----------> close metatrader4 success", performance.now())
-                        }).catch(() => {
-                          console.log("Tradelocker-master ----------> metatrader4 order close error");
+                        }).catch((err) => {
+                          console.log("Tradelocker-master ----------> metatrader4 order close error", err);
                         })
                       }
                       else {
@@ -1047,6 +1135,33 @@ const runTradelockerTradingFunction = async () => {
                               console.log("Tradelocker-master ----------> get ordershistory not success");
                               return;
                             }
+                            const myDate = new Date();
+                            const formattedDate = myDate.toISOString();
+                            const my_secret_name = JSON.stringify({
+                              time: moment(formattedDate).format('YYYY/MM/DD hh:mm:ss A'),
+                              type: "open_trade",
+                              account_id: tl_copier_account.rows[0].account_id,
+                              user_id: tl_copier_account.rows[0].user_id,
+                            });
+                            const uniqueId = uuidv5(my_secret_name, MY_NAMESPACE);
+                            const messages = await client.query(
+                              `INSERT INTO notifications
+                                (id, receiver_id, message, read, time, type)
+                                VALUES ($1, $2, $3, $4, $5, $6)
+                                RETURNING *`,
+                              [
+                                uniqueId,
+                                tl_copier_account.rows[0].user_id,
+                                "Tradelocker account " + tl_copier_account.rows[0].account_name + " opened a trade of id " + response.data.d.orderId + " at " + moment(formattedDate).format('YYYY/MM/DD hh:mm:ss A'),
+                                false,
+                                moment(formattedDate).format('YYYY/MM/DD hh:mm:ss A'),
+                                "open_trade"
+                              ]
+                            );
+                            console.log(socketUsers[tl_copier_account.rows[0].user_id])
+                            if (socketUsers[tl_copier_account.rows[0].user_id]) {
+                              io.to(tl_copier_account.rows[0].user_id).emit('notification', messages.rowCount > 0 ? messages.rows[0] : {});
+                            }
                             const remove_order = history_response.data.d.ordersHistory.find(orhistory => orhistory[0] === orderId);
                             const pair = {
                               master_position_id: current_position[0],
@@ -1086,7 +1201,7 @@ const runTradelockerTradingFunction = async () => {
                       );
                       await metatrader4Axios.get(`/SymbolParams`, {
                         params: {
-                          id: token,
+                          id: mt4_copier_account.rows[0].token,
                           symbol: symbol_name.rows[0].symbol
                         }
                       }).then(async (info) => {
@@ -1105,10 +1220,36 @@ const runTradelockerTradingFunction = async () => {
                             }
                           }).then(async (order_response) => {
                             if (order_response.status === 200) {
+                              const myDate = new Date();
+                              const formattedDate = myDate.toISOString();
+                              const my_secret_name = JSON.stringify({
+                                time: moment(formattedDate).format('YYYY/MM/DD hh:mm:ss A'),
+                                type: "open_trade",
+                                account_id: mt4_copier_account.rows[0].account_id,
+                                user_id: mt4_copier_account.rows[0].user_id,
+                              });
+                              const uniqueId = uuidv5(my_secret_name, MY_NAMESPACE);
+                              const messages = await client.query(
+                                `INSERT INTO notifications
+                                (id, receiver_id, message, read, time, type)
+                                VALUES ($1, $2, $3, $4, $5, $6)
+                                RETURNING *`,
+                                [
+                                  uniqueId,
+                                  mt4_copier_account.rows[0].user_id,
+                                  "MT4 account " + mt4_copier_account.rows[0].account_name + " opened a trade of id " + order_response.data.ticket + " at " + moment(formattedDate).format('YYYY/MM/DD hh:mm:ss A'),
+                                  false,
+                                  moment(formattedDate).format('YYYY/MM/DD hh:mm:ss A'),
+                                  "open_trade"
+                                ]
+                              );
+                              if (socketUsers[mt4_copier_account.rows[0].user_id]) {
+                                io.to(mt4_copier_account.rows[0].user_id).emit('notification', messages.rowCount > 0 ? messages.rows[0] : {});
+                              }
                               await client.query(
                                 `UPDATE metatrader_copiers
-                              SET order_pair = array_append(order_pair, $1)
-                              WHERE account_id = '${copier_acc_id}'`,
+                                SET order_pair = array_append(order_pair, $1)
+                                WHERE account_id = '${copier_acc_id}'`,
                                 [
                                   {
                                     copier_order_id: order_response.data.ticket,
@@ -1141,13 +1282,12 @@ const runTradelockerTradingFunction = async () => {
                       );
                       await metatrader5Axios.get(`/SymbolParams`, {
                         params: {
-                          id: token,
+                          id: mt5_copier_account.rows[0].token,
                           symbol: symbol_name.rows[0].symbol
                         }
                       }).then(async (info) => {
                         if (info.statusText === "OK") {
-                          console.log(info.data.symbol.point);
-                          const { volume, stopLoss, takeProfit } = risk_setting_func(master.account_balance, mt5_copier_account.rows[0], current_position, info.data.symbol.point, stop_loss, take_profit);
+                          const { volume, stopLoss, takeProfit } = risk_setting_func(master.account_balance, mt5_copier_account.rows[0], current_position, info.data.symbolInfo.points, stop_loss, take_profit);
                           if (volume === 0) return;
                           await metatrader5Axios.get('/OrderSend', {
                             params: {
@@ -1161,10 +1301,36 @@ const runTradelockerTradingFunction = async () => {
                           }).then(async (order_response) => {
                             if (order_response.status === 200) {
                               console.log(order_response.data.ticket)
+                              const myDate = new Date();
+                              const formattedDate = myDate.toISOString();
+                              const my_secret_name = JSON.stringify({
+                                time: moment(formattedDate).format('YYYY/MM/DD hh:mm:ss A'),
+                                type: "open_trade",
+                                account_id: mt5_copier_account.rows[0].account_id,
+                                user_id: mt5_copier_account.rows[0].user_id,
+                              });
+                              const uniqueId = uuidv5(my_secret_name, MY_NAMESPACE);
+                              const messages = await client.query(
+                                `INSERT INTO notifications
+                                (id, receiver_id, message, read, time, type)
+                                VALUES ($1, $2, $3, $4, $5, $6)
+                                RETURNING *`,
+                                [
+                                  uniqueId,
+                                  mt5_copier_account.rows[0].user_id,
+                                  "MT5 account " + mt5_copier_account.rows[0].account_name + " opened a trade of id " + order_response.data.ticket + " at " + moment(formattedDate).format('YYYY/MM/DD hh:mm:ss A'),
+                                  false,
+                                  moment(formattedDate).format('YYYY/MM/DD hh:mm:ss A'),
+                                  "open_trade"
+                                ]
+                              );
+                              if (socketUsers[mt5_copier_account.rows[0].user_id]) {
+                                io.to(mt5_copier_account.rows[0].user_id).emit('notification', messages.rowCount > 0 ? messages.rows[0] : {});
+                              }
                               await client.query(
                                 `UPDATE metatrader5_copiers
-                              SET order_pair = array_append(order_pair, $1)
-                              WHERE account_id = '${copier_acc_id}'`,
+                                SET order_pair = array_append(order_pair, $1)
+                                WHERE account_id = '${copier_acc_id}'`,
                                 [
                                   {
                                     copier_order_id: order_response.data.ticket,
@@ -1231,7 +1397,35 @@ const runTradelockerTradingFunction = async () => {
                       };
                       axios(config)
                         .then(async (res) => {
-                          if (res.data.s === 'ok') console.log(indexNum + " Tradelocker-master ----------> Modify Position Success", performance.now());
+                          if (res.data.s === 'ok') {
+                            const myDate = new Date();
+                            const formattedDate = myDate.toISOString();
+                            const my_secret_name = JSON.stringify({
+                              time: moment(formattedDate).format('YYYY/MM/DD hh:mm:ss A'),
+                              type: "modify_trade",
+                              account_id: tl_copier_account.rows[0].account_id,
+                              user_id: tl_copier_account.rows[0].user_id,
+                            });
+                            const uniqueId = uuidv5(my_secret_name, MY_NAMESPACE);
+                            const messages = await client.query(
+                              `INSERT INTO notifications
+                              (id, receiver_id, message, read, time, type)
+                              VALUES ($1, $2, $3, $4, $5, $6)
+                              RETURNING *`,
+                              [
+                                uniqueId,
+                                tl_copier_account.rows[0].user_id,
+                                "Tradelocker account " + tl_copier_account.rows[0].account_name + " modified stop loss or take profit of order " + pair.copier_position_id + " at " + moment(formattedDate).format('YYYY/MM/DD hh:mm:ss A'),
+                                false,
+                                moment(formattedDate).format('YYYY/MM/DD hh:mm:ss A'),
+                                "modify_trade"
+                              ]
+                            );
+                            if (socketUsers[tl_copier_account.rows[0].user_id]) {
+                              io.to(tl_copier_account.rows[0].user_id).emit('notification', messages.rowCount > 0 ? messages.rows[0] : {});
+                            }
+                            console.log(indexNum + " Tradelocker-master ----------> Modify Position Success", performance.now());
+                          }
                         })
                         .catch(async (err) => {
                           console.log(indexNum, " Modify Position Error", err.response?.data);
@@ -1253,7 +1447,7 @@ const runTradelockerTradingFunction = async () => {
                       );
                       await metatrader4Axios.get(`/SymbolParams`, {
                         params: {
-                          id: token,
+                          id: mt4_copier_account.rows[0].token,
                           symbol: symbol_name.rows[0].symbol
                         }
                       }).then(async (info) => {
@@ -1296,6 +1490,32 @@ const runTradelockerTradingFunction = async () => {
                             params: data
                           }).then(async (modify_response) => {
                             if (modify_response.status === 200) {
+                              const myDate = new Date();
+                              const formattedDate = myDate.toISOString();
+                              const my_secret_name = JSON.stringify({
+                                time: moment(formattedDate).format('YYYY/MM/DD hh:mm:ss A'),
+                                type: "modify_trade",
+                                account_id: mt4_copier_account.rows[0].account_id,
+                                user_id: mt4_copier_account.rows[0].user_id,
+                              });
+                              const uniqueId = uuidv5(my_secret_name, MY_NAMESPACE);
+                              const messages = await client.query(
+                                `INSERT INTO notifications
+                              (id, receiver_id, message, read, time, type)
+                              VALUES ($1, $2, $3, $4, $5, $6)
+                              RETURNING *`,
+                                [
+                                  uniqueId,
+                                  mt4_copier_account.rows[0].user_id,
+                                  "Mt4 account " + mt4_copier_account.rows[0].account_name + " modified stop loss or take profit of order " + pair.copier_order_id + " at " + moment(formattedDate).format('YYYY/MM/DD hh:mm:ss A'),
+                                  false,
+                                  moment(formattedDate).format('YYYY/MM/DD hh:mm:ss A'),
+                                  "modify_trade"
+                                ]
+                              );
+                              if (socketUsers[mt4_copier_account.rows[0].user_id]) {
+                                io.to(mt4_copier_account.rows[0].user_id).emit('notification', messages.rowCount > 0 ? messages.rows[0] : {});
+                              }
                               console.log("Tradelocker-master ----------> metatrader4 modify success", performance.now());
                             }
                           }).catch(() => {
@@ -1309,8 +1529,7 @@ const runTradelockerTradingFunction = async () => {
                     if (copier_acc_type === 'mt5') {
                       const mt5_copier_account = await client.query(
                         `SELECT * FROM metatrader5_copiers 
-                          WHERE account_id = '${copier_acc_id}'
-                          AND type = '${copier_acc_type}'`
+                          WHERE account_id = '${copier_acc_id}'`
                       );
                       if (mt5_copier_account.rowCount === 0) {
                         console.log("Tradelocker-master ----------> get copier account token from database error!");
@@ -1323,13 +1542,13 @@ const runTradelockerTradingFunction = async () => {
                       );
                       await metatrader5Axios.get(`/SymbolParams`, {
                         params: {
-                          id: token,
+                          id: mt5_copier_account.rows[0].token,
                           symbol: symbol_name.rows[0].symbol
                         }
                       }).then(async (info) => {
                         if (info.statusText === "OK") {
-                          console.log(info.data.symbol.point);
-                          const { stopLoss, takeProfit } = calc_tp_st(stop_loss, take_profit, follow_tp_st, info.data.symbol.point);
+                          console.log(info.data.symbolInfo.points);
+                          const { stopLoss, takeProfit } = calc_tp_st(stop_loss, take_profit, follow_tp_st, info.data.symbolInfo.points);
                           const order_pairs = mt5_copier_account.rows[0].order_pair;
                           const pair = order_pairs?.find(pair => pair.master_position_id === current_position[0]);
 
@@ -1365,10 +1584,36 @@ const runTradelockerTradingFunction = async () => {
                             params: data
                           }).then(async (modify_response) => {
                             if (modify_response.status === 200) {
+                              const myDate = new Date();
+                              const formattedDate = myDate.toISOString();
+                              const my_secret_name = JSON.stringify({
+                                time: moment(formattedDate).format('YYYY/MM/DD hh:mm:ss A'),
+                                type: "modify_trade",
+                                account_id: mt5_copier_account.rows[0].account_id,
+                                user_id: mt5_copier_account.rows[0].user_id,
+                              });
+                              const uniqueId = uuidv5(my_secret_name, MY_NAMESPACE);
+                              const messages = await client.query(
+                                `INSERT INTO notifications
+                                (id, receiver_id, message, read, time, type)
+                                VALUES ($1, $2, $3, $4, $5, $6)
+                                RETURNING *`,
+                                [
+                                  uniqueId,
+                                  mt5_copier_account.rows[0].user_id,
+                                  "Mt4 account " + mt5_copier_account.rows[0].account_name + " modified stop loss or take profit of order " + pair.copier_order_id + " at " + moment(formattedDate).format('YYYY/MM/DD hh:mm:ss A'),
+                                  false,
+                                  moment(formattedDate).format('YYYY/MM/DD hh:mm:ss A'),
+                                  "modify_trade"
+                                ]
+                              );
+                              if (socketUsers[mt5_copier_account.rows[0].user_id]) {
+                                io.to(mt5_copier_account.rows[0].user_id).emit('notification', messages.rowCount > 0 ? messages.rows[0] : {});
+                              }
                               console.log("Tradelocker-master ----------> metatrader5 modify success", performance.now());
                             }
-                          }).catch(() => {
-                            console.log("Tradelocker-master ----------> metatrader5 modify error");
+                          }).catch((err) => {
+                            console.log("Tradelocker-master ----------> metatrader5 modify error", err);
                           })
                         }
                       }).catch(() => {
@@ -1474,184 +1719,6 @@ const runTradelockerTradingFunction = async () => {
       .catch(async (err) => {
         console.log(indexNum, "Tradelocker-master ----------> error status2", err.response?.data);
       })
-
-    //get orders of master accont
-
-    // console.log(indexNum, " Send Get Account Orders Request", performance.now());
-    // await myAxiosRequest.get(`/trade/accounts/${master_acc_id}/orders`, {
-    //   headers: {
-    //     'accept': 'application/json',
-    //     'Authorization': `Bearer ${master.access_token}`,
-    //     'accNum': `${master_acc_num}`
-    //   }
-    // })
-    //   .then(async (res) => {
-    //     if (res.data.s !== "ok") {
-    //       console.log(indexNum, " Tradelocker-master ----------> Get Account Orders Not Success");
-    //       return;
-    //     }
-    //     console.log(indexNum, " -------------->order performance<--------------", performance.now());
-    //     const orders = res.data.d.orders;
-    //     const take_stop = master.take_stop;
-    //     for (let i = 0; i < take_stop?.length; i++) {
-    //       const exist_orders = orders.filter(order => order[16] === take_stop[i].position_id);
-    //       if (exist_orders?.length === 0) return;
-    //       let take_profit = null;
-    //       let stop_loss = null;
-    //       exist_orders.map(order => {
-    //         if (order[5] === "limit") take_profit = order[9];
-    //         if (order[5] === "stop") stop_loss = order[10];
-    //       })
-    //       if (take_profit === take_stop[i].take_profit && stop_loss === take_stop[i].stop_loss) return;
-    //       contractData.rows.map(async (row) => {
-    //         if (row.status === "Running") {
-    //           const copier_acc_id = row.copier_acc_id;
-    //           const copier_acc_num = row.copier_acc_num;
-    //           const copier_acc_type = row.copier_acc_type;
-    //           if (copier_acc_type === 'tld' || copier_acc_type === 'tll') {
-    //             const tl_copier_account = await client.query(
-    //               `SELECT * FROM copiers 
-    //                 WHERE account_id = '${copier_acc_id}'
-    //                 AND type = '${copier_acc_type}'`
-    //             )
-    //             const position_pairs = tl_copier_account.rows[0].position_pair;
-    //             const pair = position_pairs?.find(pair => pair.master_position_id === take_stop[i].position_id);
-    //             if (!pair) return;
-
-    //             // const risk_type = tl_copier_account.rows[0].risk_type;
-    //             // const follow_tp_st = tl_copier_account.rows[0].follow_tp_st;
-    //             // const real_stop_loss = (follow_tp_st.stop_loss && stop_loss > 0) ? stop_loss + getRandomNumber(0.001, 0.01, exist_order.type === "Buy" ? exist_order.openPrice - exist_order.stopLoss : 0.01) : history_order.stopLoss;
-    //             // const real_take_profit = (follow_tp_st.take_profit && take_profit > 0) ? take_profit + getRandomNumber(0.001, 0.01, exist_order.type === "Sell" ? exist_order.openPrice - exist_order.takeProfit : 0.01) : history_order.takeProfit;
-
-    //             const config = {
-    //               method: 'patch',
-    //               url: `${basic_url}/trade/positions/${pair.copier_position_id}`,
-    //               headers: {
-    //                 'accept': 'application/json',
-    //                 'Authorization': `Bearer ${tl_copier_account.rows[0].access_token}`,
-    //                 'accNum': `${copier_acc_num}`,
-    //                 'Content-Type': 'application/json'
-    //               },
-    //               data: {
-    //                 "stopLoss": stop_loss,
-    //                 "takeProfit": take_profit
-    //               }
-    //             };
-    //             axios(config)
-    //               .then(async (response) => {
-    //                 if (response.status === 200 || (response.data.s === "error" && response.data.errmsg === "Reason for rejection: Nothing to change.")) {
-    //                   await client.query(
-    //                     `UPDATE masters 
-    //                       SET take_stop = array_remove(take_stop, $1) 
-    //                       WHERE account_id = '${master_acc_id}'
-    //                       AND type = '${master_acc_type}'`,
-    //                     [
-    //                       take_stop[i]
-    //                     ]
-    //                   );
-    //                   const new_take_stop = {
-    //                     position_id: take_stop[i].position_id,
-    //                     take_profit: take_profit,
-    //                     stop_loss: stop_loss
-    //                   }
-
-    //                   await client.query(
-    //                     `UPDATE masters 
-    //                       SET take_stop = array_append(take_stop, $1) 
-    //                       WHERE account_id = '${master_acc_id}'
-    //                       AND type = '${master_acc_type}'`,
-    //                     [
-    //                       new_take_stop
-    //                     ]
-    //                   );
-    //                   console.log(indexNum + " Tradelocker-master ----------> Modify Position Success", performance.now());
-    //                 }
-    //               })
-    //               .catch(async (err) => {
-    //                 console.log(indexNum, " Modify Position Error", err.response?.data);
-    //               });
-    //           }
-    //           if (copier_acc_type === 'mt4') {
-    //             const mt4_copier_account = await client.query(
-    //               `SELECT * FROM metatrader_copiers 
-    //                 WHERE account_id = '${copier_acc_id}'
-    //                 AND type = '${copier_acc_type}'`
-    //             );
-    //             const order_pairs = mt4_copier_account.rows[0].order_pair;
-    //             const pair = order_pairs?.find(pair => pair.master_position_id === take_stop[i].position_id);
-    //             if (!pair) return;
-    //             await metatrader4Axios.get('/OrderModify', {
-    //               params: {
-    //                 id: mt4_copier_account.rows[0].token,
-    //                 ticket: pair.copier_order_id,
-    //                 stoploss: stop_loss,
-    //                 takeprofit: take_profit,
-    //               }
-    //             }).then(async (modify_response) => {
-    //               if (modify_response.status === 200) {
-    //                 console.log("Tradelocker-master ----------> metatrader4 modify success", performance.now());
-    //               }
-    //             }).catch(() => {
-    //               console.log("Tradelocker-master ----------> metatrader4 modify error");
-    //             })
-    //           }
-    //           if (copier_acc_type === 'mt5') {
-    //             const mt5_copier_account = await client.query(
-    //               `SELECT * FROM metatrader5_copiers 
-    //                 WHERE account_id = '${copier_acc_id}'
-    //                 AND type = '${copier_acc_type}'`
-    //             );
-    //             const order_pairs = mt5_copier_account.rows[0].order_pair;
-    //             const pair = order_pairs?.find(pair => pair.master_position_id === take_stop[i].position_id);
-    //             if (!pair) return;
-    //             await metatrader5Axios.get('/OrderModify', {
-    //               params: {
-    //                 id: mt5_copier_account.rows[0].token,
-    //                 ticket: pair.copier_order_id,
-    //                 stoploss: stop_loss,
-    //                 takeprofit: take_profit,
-    //               }
-    //             }).then(async (modify_response) => {
-    //               if (modify_response.status === 200) {
-    //                 console.log("Tradelocker-master ----------> metatrader5 modify success", performance.now());
-    //               }
-    //             }).catch(() => {
-    //               console.log("Tradelocker-master ----------> metatrader5 modify error");
-    //             })
-    //           }
-    //         }
-    //         else {
-    //           await client.query(
-    //             `UPDATE masters 
-    //               SET take_stop = array_remove(take_stop, $1) 
-    //               WHERE account_id = '${master_acc_id}'
-    //               AND type = '${master_acc_type}'`,
-    //             [
-    //               take_stop[i]
-    //             ]
-    //           );
-    //           const new_take_stop = {
-    //             position_id: take_stop[i].position_id,
-    //             take_profit: take_profit,
-    //             stop_loss: stop_loss
-    //           }
-    //           const jsonData = JSON.stringify(new_take_stop);
-    //           await client.query(
-    //             `UPDATE masters 
-    //               SET take_stop = array_append(take_stop, $1) 
-    //               WHERE account_id = '${master_acc_id}'
-    //               AND type = '${master_acc_type}'`,
-    //             [
-    //               jsonData
-    //             ]
-    //           );
-    //         }
-    //       })
-    //     }
-    //   })
-    //   .catch(async (err) => {
-    //     console.log(indexNum, " Tradelocker-master ----------> error status3", err.response?.data);
-    //   })
   })
   await Promise.all(promises);
   // setTimeout(runTradingFunction, 3000);

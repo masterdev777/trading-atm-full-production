@@ -173,10 +173,12 @@ exports.cryptoChillCallback = async (req, res) => {
 
           await client.query(
             `UPDATE users 
-              SET transaction_history = array_append(transaction_history, $1) 
+              SET transaction_history = array_append(transaction_history, $1),
+              balance = balance + $2 
               WHERE id = '${confirmed_passthrough.user_id}'`,
             [
-              new_transaction_history
+              new_transaction_history,
+              new_transaction_history.amount
             ]
           )
         }
@@ -207,7 +209,7 @@ exports.cryptoChillCallback = async (req, res) => {
 
             await client.query(
               `UPDATE users 
-                SET transaction_history = array_append(transaction_history, $1) 
+                SET transaction_history = array_append(transaction_history, $1)
                 WHERE id = '${completed_passthrough.user_id}'`,
               [
                 new_transaction_history
@@ -281,10 +283,12 @@ exports.cryptoChillCallback = async (req, res) => {
 
             await client.query(
               `UPDATE users 
-                SET transaction_history = array_append(transaction_history, $1) 
+                SET transaction_history = array_append(transaction_history, $1),
+                balance = balance + $2 
                 WHERE id = '${payout_confirmed_passthrough.user_id}'`,
               [
-                new_transaction_history
+                new_transaction_history,
+                -new_transaction_history.amount
               ]
             )
           }

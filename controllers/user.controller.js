@@ -12,6 +12,7 @@ const moment = require("moment");
 exports.register = async (req, res) => {
   try {
     const { username, email, password } = req.body;
+    console.log("Register ---------------------->", email, password);
     const userExists = await emailExists(email);
     const isFirstUser = await firstUser();
     const created_at = new Date();
@@ -81,11 +82,11 @@ exports.sendVerifyEmail = async (token, user) => {
       recipient: user.email,
       message: config.server_url + "/user/verify/token" + sendToken
     };
-    const serviceID = "service_yan6r8n";
-    const templateID = "template_mcx58n3";
+    const serviceID = "service_z4nls6p";
+    const templateID = "template_cbzetnk";
     const userID = {
-      publicKey: 'mzBuss3nc55LTbHcx',
-      privateKey: '8pkOEygaDp4eLFzFX457X'
+      publicKey: 'lfNyYMLdX7ikJM5Eq',
+      privateKey: 'YSiwbwwHa_ZAde0VTzVpb'
     }
     const response = await emailjs.send(serviceID, templateID, templateParams, userID);
     console.log(user.email, 'verify email send success', response.status, response.text);
@@ -406,12 +407,23 @@ exports.login = async (req, res) => {
         `SELECT * FROM copier_plan_price 
         WHERE id = 1`
       );
+      const messages = await client.query(
+        `SELECT * FROM notifications
+        WHERE receiver_id = $1
+        AND read = $2
+        ORDER BY time`,
+        [
+          req.user.id,
+          false
+        ]
+      )
       await res.status(200).send({
         token: getToken(data.rows[0]),
         user: data.rows[0],
         accounts: accounts,
         levelToLimit: levelToLimit.rows,
-        copier_plan_price: copier_price.rows[0].price
+        copier_plan_price: copier_price.rows[0].price,
+        messages: messages.rows
       });
     }
     else {
@@ -453,13 +465,24 @@ exports.loginWithToken = async (req, res) => {
             `SELECT * FROM copier_plan_price 
             WHERE id = 1`
           );
+          const messages = await client.query(
+            `SELECT * FROM notifications
+            WHERE receiver_id = $1
+            AND read = $2
+            ORDER BY time`,
+            [
+              payload.id,
+              false
+            ]
+          );
           const accounts = await this.getMyAllAccounts(data.rows[0]);
           await res.status(200).send({
             token: getToken(data.rows[0]),
             user: data.rows[0],
             accounts: accounts,
             levelToLimit: levelToLimit.rows,
-            copier_plan_price: copier_price.rows[0].price
+            copier_plan_price: copier_price.rows[0].price,
+            messages: messages.rows
           })
         }
       }
@@ -513,7 +536,7 @@ exports.getAccountData = async (req, res) => {
       delete masterAcc.rows[0].master_pl;
       let process_pl = [];
       let i = pl?.length ? pl?.length - 1 : -1;
-      const last_trade_at = i > 0 ? new Date(pl[i-1].date) : "";
+      const last_trade_at = i > 0 ? new Date(pl[i - 1].date) : "";
       let balance = masterAcc.rows[0].account_balance;
       let maxVal = balance;
       let minVal = 0;
@@ -530,8 +553,8 @@ exports.getAccountData = async (req, res) => {
       }
       for (let d = 1; d <= count; d++) {
         let isExist = false;
-        const daysAgo = new Date(Date.now() - d * interval * 60 * 60 * 1000);
-        if (daysAgo < masterAcc.rows[0].registered_at) break;
+        let daysAgo = new Date(Date.now() - d * interval * 60 * 60 * 1000);
+        if (daysAgo < masterAcc.rows[0].registered_at) daysAgo = masterAcc.rows[0].registered_at;
         let day_pl = 0;
         for (; i >= 0; i--) {
           if (new Date(pl[i].date) > daysAgo) {
@@ -555,6 +578,7 @@ exports.getAccountData = async (req, res) => {
         if (minVal > balance) minVal = balance;
         if (plMaxVal < day_pl) plMaxVal = day_pl;
         if (plMinVal > day_pl) plMinVal = day_pl;
+        if (daysAgo === masterAcc.rows[0].registered_at) break;
         // if (i < 0) break;
       }
       await res.status(200).send({
@@ -591,7 +615,7 @@ exports.getAccountData = async (req, res) => {
       delete copierAcc.rows[0].copier_pl;
       let process_pl = [];
       let i = pl?.length ? pl?.length - 1 : -1;
-      const last_trade_at = i > 0 ? new Date(pl[i-1].date) : "";
+      const last_trade_at = i > 0 ? new Date(pl[i - 1].date) : "";
       let balance = copierAcc.rows[0].account_balance;
       let maxVal = balance;
       let minVal = 0;
@@ -608,8 +632,8 @@ exports.getAccountData = async (req, res) => {
       }
       for (let d = 1; d <= count; d++) {
         let isExist = false;
-        const daysAgo = new Date(Date.now() - d * interval * 60 * 60 * 1000);
-        if (daysAgo < copierAcc.rows[0].registered_at) break;
+        let daysAgo = new Date(Date.now() - d * interval * 60 * 60 * 1000);
+        if (daysAgo < copierAcc.rows[0].registered_at) daysAgo = copierAcc.rows[0].registered_at;
         let day_pl = 0;
         for (; i >= 0; i--) {
           if (new Date(pl[i].date) > daysAgo) {
@@ -634,6 +658,7 @@ exports.getAccountData = async (req, res) => {
         if (minVal > balance) minVal = balance;
         if (plMaxVal < day_pl) plMaxVal = day_pl;
         if (plMinVal > day_pl) plMinVal = day_pl;
+        daysAgo = copierAcc.rows[0].registered_at;
         // if (i < 0) break;
       }
       await res.status(200).send({
@@ -746,28 +771,68 @@ exports.uploadProfile = async (req, res) => {
 //Dashboard Balance Update Endpoint
 exports.updateBalance = async (req, res) => {
   try {
-    let balance = 0;
-    req.user.transaction_history?.map((history) => {
-      const amount = history.amount;
-      const status = history.status;
-      const type = history.type;      
-      if (status === 'pending') return;
-      if (type === "Charge") balance += amount;
-      if (type === "Withdraw" || type === "Subscription") balance -= amount;
-    });
-    
-    await client.query(
-      `UPDATE users
-      SET balance = $1
-      WHERE id = $2`,
+    // let balance = 0;
+    // req.user.transaction_history?.map((history) => {
+    //   const amount = history.amount;
+    //   const status = history.status;
+    //   const type = history.type;    
+    //   if (status === 'pending') return;
+    //   if (type === "Charge") balance += amount;
+    //   if (type === "Withdraw" || type === "Subscription") balance -= amount;
+    //   console.log(balance, amount)  
+    // });
+
+    // await client.query(
+    //   `UPDATE users
+    //   SET balance = $1
+    //   WHERE id = $2`,
+    //   [
+    //     balance > 0 ? balance : 0,
+    //     req.user.id
+    //   ]
+    // );
+    const balance = await client.query(
+      `SELECT balance FROM users
+      WHERE id = $1`,
       [
-        balance > 0 ? balance : 0,
         req.user.id
       ]
-    );
-    await res.status(200).send({ balance: balance > 0 ? balance : 0 })
+    )
+    await res.status(200).send({ balance: balance.rows[0].balance > 0 ? balance.rows[0].balance : 0 });
+    // await res.status(200).send({ balance: balance > 0 ? balance : 0 })
   }
   catch {
     await res.status(501).send("failed");
+  }
+}
+
+//update notification
+
+exports.updateNotification = async (req, res) => {
+  try {
+    const { user_id, id } = req.body;
+    console.log(id)
+    await client.query(
+      `UPDATE notifications
+      SET read = $1
+      WHERE id = $2`,
+      [
+        true,
+        id
+      ]
+    );
+    const data = await client.query(
+      `SELECT * FROM notifications
+      WHERE read = $1
+      AND receiver_id = $2`,
+      [
+        false,
+        user_id
+      ]
+    );
+    await res.status(200).send(data.rowCount > 0 ? data.rows : []);
+  }
+  catch {
+    await res.status(501).send("Server error!");
   }
 }

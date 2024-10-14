@@ -16,5 +16,6 @@ router.post("/send-verify-code", userCtr.sendVerifyCode);
 router.post("/check-verify-code", userCtr.checkVerifyCode);
 router.post("/change-password", userCtr.changePassword);
 router.post("/update-balance", requireAuth, userCtr.updateBalance);
+router.post("/update-notification", requireAuth, userCtr.updateNotification);
 
 module.exports = router;

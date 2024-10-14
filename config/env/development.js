@@ -1,5 +1,5 @@
 module.exports = {
-    port: 3002,
-    secret:'MYSECRET',
-    server_url:'https://trading-atm-development.onrender.com'
+    port: 443,
+    secret:'TRADINGATMSECRET',
+    server_url:'https://188.166.153.100'
 }

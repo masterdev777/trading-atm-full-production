@@ -1,6 +1,11 @@
 const client = require("../config/db/db.js");
+const { v5: uuidv5 } = require('uuid');
+const moment = require("moment");
 const { generateTransactionId } = require("../config/utils/getTransactionId.js");
 const { getMyAllAccounts } = require("./user.controller.js");
+const { getSocketInstance, socketUsers } = require("../socket/socket.js");
+
+const MY_NAMESPACE = uuidv5("https://tradingatmstg.wpenginepowered.com/", uuidv5.DNS);
 
 /*dashboard*/
 
@@ -161,8 +166,9 @@ exports.addMasterAccount = async (req, res) => {
             top_badge,
             level,
             payment_date,
-            permission) 
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29) 
+            permission,
+            user_id) 
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30) 
             RETURNING *`,
           [
             formattedDate,
@@ -196,7 +202,8 @@ exports.addMasterAccount = async (req, res) => {
             },
             level_limit.rows[0].level,
             formattedDate,
-            true
+            true,
+            id
           ]
         );
         const accounts = await getMyAllAccounts(user.rows[0]);
@@ -310,8 +317,10 @@ exports.addCopierAccount = async (req, res) => {
             force_min_max,
             profit_share_method,
             payment_date,
-            permission) 
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30) 
+            permission,
+            user_id,
+            follow_profit_share_change) 
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32) 
             RETURNING *`,
           [
             acc_num,
@@ -346,7 +355,9 @@ exports.addCopierAccount = async (req, res) => {
             {},
             "per_hour",
             formattedDate,
-            true
+            true,
+            id,
+            "no"
           ]
         );
         const accounts = await getMyAllAccounts(myData.rows[0]);
@@ -474,8 +485,9 @@ exports.addMetatraderMasterAccount = async (req, res) => {
             top_badge,
             level,
             payment_date,
-            permission) 
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26) 
+            permission,
+            user_id) 
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27) 
             RETURNING *`,
           [
             formattedDate,
@@ -506,7 +518,8 @@ exports.addMetatraderMasterAccount = async (req, res) => {
             },
             level_limit.rows[0].level,
             formattedDate,
-            true
+            true,
+            id
           ]
         );
         const accounts = await getMyAllAccounts(user.rows[0]);
@@ -623,8 +636,10 @@ exports.addMetatraderCopierAccount = async (req, res) => {
             force_min_max,
             profit_share_method,
             payment_date,
-            permission) 
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27) 
+            permission,
+            user_id,
+            follow_profit_share_change) 
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29) 
             RETURNING *`,
           [
             formattedDate,
@@ -656,7 +671,9 @@ exports.addMetatraderCopierAccount = async (req, res) => {
             {},
             "per_hour",
             formattedDate,
-            true
+            true,
+            id,
+            "no"
           ]
         );
         const accounts = await getMyAllAccounts(myData.rows[0]);
@@ -1021,27 +1038,167 @@ exports.deleteAvatar = async (req, res) => {
   }
 }
 
+const getCopierUsers = async (master_acc_id, master_acc_type) => {
+  const contracts = await client.query(
+    `SELECT id,
+    user_id,
+    copier_acc_type,
+    copier_acc_id
+    FROM contract
+    WHERE master_acc_id = $1
+    AND master_acc_type = $2`,
+    [
+      master_acc_id,
+      master_acc_type
+    ]
+  );
+  const copier_users = [];
+  for (let i = 0; i < contracts.rowCount; i++) {
+    const contract = contracts.rows[i];
+    const accountType = contract.copier_acc_type;
+    const table_name = (accountType === "tld" || accountType === "tll") ? "copiers" : accountType === "mt4" ? "metatrader_copiers" : "metatrader5_copiers";
+    const copier = await client.query(
+      `SELECT id,
+      user_id,
+      account_id,
+      follow_profit_share_change
+      FROM ${table_name}
+      WHERE account_id = $1`,
+      [
+        contract.copier_acc_id
+      ]
+    );
+    if (copier.rowCount > 0 && copier.rows[0].follow_profit_share_change === 'no') {
+      await client.query(
+        `UPDATE contract
+        SET status = $1
+        WHERE id = $2`,
+        [
+          'Stopped',
+          contract.id
+        ]
+      );
+      await client.query(
+        `UPDATE ${table_name}
+        SET status = $1
+        WHERE id = $2`,
+        [
+          'Stopped',
+          copier.rows[0].id
+        ]
+      )
+    }
+    if (copier.rowCount > 0) copier_users.push(copier.rows[0]);
+  }
+  return { copier_users }
+}
+
 //Update Master Description
 exports.updateMasterDescription = async (req, res) => {
   try {
     const { accountId, accountType, description, profitShare } = req.body;
     const table_name = (accountType === "tld" || accountType === "tll") ? "masters" : accountType === "mt4" ? "metatrader_masters" : "metatrader5_masters";
-    const updated_data = await client.query(
-      `UPDATE ${table_name}
-      SET about_me = $1,
-      profit_share = $2
-      WHERE account_id = $3`,
+    const prev_data = await client.query(
+      `SELECT profit_share,
+      about_me,
+      profit_share_update_date
+      FROM ${table_name}
+      WHERE account_id = $1`,
       [
-        description,
-        profitShare,
         accountId
       ]
     );
-    if (updated_data.rowCount > 0) {
-      await res.status(200).send("Successfully updated!");
+    const prev_profit_share = prev_data.rows[0].profit_share;
+    const prev_description = prev_data.rows[0].about_me;
+    const prev_profit_share_update_date = prev_data.rows[0].profit_share_update_date;
+    const myDate = new Date();
+    const formattedDate = myDate.toISOString();
+    const unit = 7 * 24 * 60 * 60 * 1000;
+    const stamp = myDate - prev_profit_share_update_date;
+    console.log(prev_profit_share?.per_hour, profitShare?.per_hour);
+    console.log(prev_description, description);
+    if (prev_profit_share?.per_hour === profitShare?.per_hour && prev_description === description) {
+      await res.status(201).send("No changes!");
     }
     else {
-      await res.status(201).send("Database Error!");
+      if ((unit < stamp) && (profitShare?.per_hour <= 0.1 || (profitShare?.per_hour > 0.1 && profitShare?.per_hour <= prev_profit_share?.per_hour * 1.1))) {
+        const updated_data = await client.query(
+          `UPDATE ${table_name}
+          SET about_me = $1,
+          profit_share = $2,
+          profit_share_update_date = $3
+          WHERE account_id = $4
+          RETURNING user_id, account_id, type, account_name`,
+          [
+            description,
+            profitShare,
+            formattedDate,
+            accountId
+          ]
+        );
+        if (updated_data.rowCount > 0) {
+          const myDate = new Date();
+          const formattedDate = myDate.toISOString();
+          const secret_name = JSON.stringify({
+            time: moment(formattedDate).format('YYYY/MM/DD hh:mm:ss A'),
+            type: "change_hourly_pay_amount",
+            user_id: updated_data.rows[0].user_id,
+            to: "master"
+          });
+          const uniqueId = uuidv5(secret_name, MY_NAMESPACE);
+          const messages = await client.query(
+            `INSERT INTO notifications
+              (id, receiver_id, message, read, time, type)
+              VALUES ($1, $2, $3, $4, $5, $6)
+              RETURNING *`,
+            [
+              uniqueId,
+              updated_data.rows[0].user_id,
+              "You've changed hourly pay amount of Master Account " + updated_data.rows[0].account_name + " from" + prev_profit_share?.per_hour + " to " + profitShare?.per_hour + " at " + moment(formattedDate).format('YYYY/MM/DD hh:mm:ss A'),
+              false,
+              formattedDate,
+              "change_hourly_pay_amount"
+            ]
+          );
+          const { copier_users } = await getCopierUsers(updated_data.rows[0].account_id, updated_data.rows[0].type);
+          const io = getSocketInstance();
+          if (socketUsers[updated_data.rows[0].user_id]) io.to(updated_data.rows[0].user_id).emit('notification', messages.rows[0]);
+          console.log(copier_users)
+          copier_users?.map(async (copier, index) => {
+            console.log(copier.user_id, socketUsers[copier.user_id]);
+            await client.query(
+              ``
+            )
+            const copier_secret_name = JSON.stringify({
+              time: moment(formattedDate).format('YYYY/MM/DD hh:mm:ss A'),
+              type: "change_hourly_pay_amount",
+              user_id: copier.user_id,
+              to: "master",
+              user_number: index
+            });
+            const copierUniqueId = uuidv5(copier_secret_name, MY_NAMESPACE);
+            const copierMessages = await client.query(
+              `INSERT INTO notifications
+              (id, receiver_id, message, read, time, type)
+              VALUES ($1, $2, $3, $4, $5, $6)
+              RETURNING *`,
+              [
+                copierUniqueId,
+                copier.user_id,
+                "Hourly pay amount of Master Account " + updated_data.rows[0].account_name + " has been changed " + "from " + prev_profit_share?.per_hour + " to " + profitShare?.per_hour + " at " + moment(formattedDate).format('YYYY/MM/DD hh:mm:ss A'),
+                false,
+                formattedDate,
+                "change_hourly_pay_amount"
+              ]
+            );
+            if (socketUsers[copier.user_id]) io.to(copier.user_id).emit('notification', copierMessages.rows[0]);
+          })
+          await res.status(200).send("Successfully updated!");
+        }
+      }
+      else {
+        await res.status(201).send("Masters can change their prices once a week and can increase them by up to 10% at one time.")
+      }
     }
   }
   catch {
@@ -1344,10 +1501,23 @@ exports.startTradingFunc = async (copier_acc_id, copier_acc_type, master_acc_id,
 //Start Trading Endpoint
 exports.startTrading = async (req, res) => {
   try {
+    const balance = req.user.balance;
     const { copier_acc_id, copier_acc_type, master_acc_id, my_master_type } = req.body;
-    const success = await this.startTradingFunc(copier_acc_id, copier_acc_type, master_acc_id, my_master_type);
-    console.log(success);
-    if (success) await res.status(200).send("ok");
+    const master_table_name = (my_master_type === 'tld' || my_master_type === 'tll') ? 'masters' : my_master_type === "mt4" ? 'metatrader_masters' : 'metatrader5_masters';
+    const master_acc = await client.query(
+      `SELECT profit_share
+      FROM ${master_table_name}
+      WHERE account_id = $1`,
+      [
+        master_acc_id
+      ]
+    );
+    const value = parseFloat(master_acc.rows[0].profit_share?.per_hour);
+    if (value > balance) await res.status(201).send("Insufficient Balance!");
+    else {
+      const success = await this.startTradingFunc(copier_acc_id, copier_acc_type, master_acc_id, my_master_type);
+      if (success) await res.status(200).send("ok");
+    }
   }
   catch {
     await res.status(501).send("Server Error!");
@@ -1517,8 +1687,11 @@ exports.addMyMaster = async (req, res) => {
             master_acc_num, 
             master_acc_type, 
             status,
-            start_date) 
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8) 
+            start_date,
+            run_time,
+            pay_history,
+            user_id) 
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) 
             RETURNING *`,
           [
             copier_acc_id,
@@ -1528,7 +1701,10 @@ exports.addMyMaster = async (req, res) => {
             (master_type === 'tld' || master_type === 'tll') ? master_data.rows[0].acc_num : -1,
             master_type,
             "Connected",
-            formattedDate
+            formattedDate,
+            0,
+            [],
+            req.user.id
           ]
         );
         if (updatedContract.rowCount > 0) await res.status(200).send("Your copier conection changed to another master.!");
@@ -1569,16 +1745,24 @@ exports.addMyMaster = async (req, res) => {
             SET master_acc_id = $1, 
             master_acc_num = $2,
             master_acc_type = $3,
-            start_date = $4
-            WHERE copier_acc_id = $5
-            AND copier_acc_type = $6`,
+            start_date = $4,
+            status = $5,
+            run_time = $6,
+            pay_history = $7,
+            user_id = $8
+            WHERE copier_acc_id = $9
+            AND copier_acc_type = $10`,
           [
             master_acc_id,
             (master_type === 'tld' || master_type === 'tll') ? master_data.rows[0].acc_num : -1,
             master_type,
             formattedDate,
+            'Connected',
+            0,
+            [],
+            req.user.id,
             copier_acc_id,
-            copier_type
+            copier_type,
           ]
         );
         await res.status(200).send("Your copier has been connected to your master. Now you can start copy trading!");
@@ -1646,12 +1830,13 @@ exports.getCopierByAccountId = async (req, res) => {
 
 exports.updateProfitShareMethod = async (req, res) => {
   try {
-    const { account_id, type, profit_share_method } = req.body;
+    const { account_id, type, profit_share_method, follow_profit_share_change } = req.body;
     const table_name = (type === 'tld' || type === 'tll') ? 'copiers' : type === "mt4" ? 'metatrader_copiers' : 'metatrader5_copiers';
     const update_data = await client.query(
       `UPDATE ${table_name}
-      SET profit_share_method = $1
-      WHERE account_id = $2
+      SET profit_share_method = $1,
+      follow_profit_share_change = $2
+      WHERE account_id = $3
       RETURNING account_id,
         type,
         follow_tp_st,
@@ -1663,6 +1848,7 @@ exports.updateProfitShareMethod = async (req, res) => {
         profit_share_method`,
       [
         profit_share_method,
+        follow_profit_share_change,
         account_id
       ]
     );
@@ -1805,5 +1991,47 @@ exports.getTransactionHistory = async (req, res) => {
   }
   catch {
     res.status(501).send("failed");
+  }
+}
+
+exports.getTradingHistory = async (req, res) => {
+  try {
+    const user = req.user;
+    const { current_page, display_count } = req.body;
+    const tradingHistory = user.trading_history;
+    const filtered_data = tradingHistory?.filter((history, index) => {
+      if (index >= current_page * display_count && index < (current_page + 1) * display_count) return history;
+    });
+    res.status(200).send({ tradingHistory: filtered_data?.length ? filtered_data : [] , tradingCount: tradingHistory?.length ? tradingHistory.length : 0})
+  }
+  catch {
+    await res.status(501).send("failed");
+  }
+}
+
+exports.getCopierTradingHistory = async (req, res) => {
+  try {
+    const { current_page, display_count, copier_acc_id, copier_acc_type } = req.body;
+    console.log(current_page, display_count, copier_acc_id, copier_acc_type )
+    const contract = await client.query(
+      `SELECT pay_history
+      FROM contract
+      WHERE copier_acc_id = $1
+      AND copier_acc_type = $2`,
+      [
+        copier_acc_id,
+        copier_acc_type
+      ]
+    );
+    const tradingHistory = contract.rows[0]?.pay_history;
+    console.log(tradingHistory)
+    const filtered_data = tradingHistory?.filter((history, index) => {
+      if (index >= current_page * display_count && index < (current_page + 1) * display_count) return history;
+    });
+    console.log(filtered_data)
+    res.status(200).send({ tradingHistory: filtered_data?.length ? filtered_data : [] , tradingCount: tradingHistory?.length ? tradingHistory.length : 0})
+  }
+  catch {
+    await res.status(501).send("failed");
   }
 }
