@@ -1,0 +1,3 @@
+import{j as e}from"./index-CJc2CFJM.js";const c=({text:s,background_left_img:r,background_right_img:x,title:l,className:t,className1:a})=>e.jsx(e.Fragment,{children:e.jsxs("div",{className:`${t} relative
+          backdrop-blur-xl border-[2px] border-color4 rounded-xl 
+          flex flex-col items-center py-8`,children:[e.jsxs("div",{className:"absolute top-3 w-[90%] h-[80%] flex justify-between",children:[e.jsx("img",{src:`/images/${r}`,className:"w-[60px] h-[63px]"}),e.jsx("img",{src:`/images/${x}`,className:"w-[60px] h-[63px]"})]}),e.jsx("p",{className:`font-bold text-[32px] ${a}`,children:l}),e.jsx("p",{className:"font-bold text-[14px] text-white",children:s})]})});export{c as H};

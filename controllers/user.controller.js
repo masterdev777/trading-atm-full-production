@@ -82,11 +82,11 @@ exports.sendVerifyEmail = async (token, user) => {
       recipient: user.email,
       message: config.server_url + "/user/verify/token" + sendToken
     };
-    const serviceID = "service_z4nls6p";
-    const templateID = "template_cbzetnk";
+    const serviceID = "service_mt4brv8";
+    const templateID = "template_ukzdtpd";
     const userID = {
-      publicKey: 'lfNyYMLdX7ikJM5Eq',
-      privateKey: 'YSiwbwwHa_ZAde0VTzVpb'
+      publicKey: 'Dyq7ZSG0gLrFj9gZV',
+      privateKey: 'TZiuJMoAKS4oBzFG63Q0a'
     }
     const response = await emailjs.send(serviceID, templateID, templateParams, userID);
     console.log(user.email, 'verify email send success', response.status, response.text);
@@ -126,11 +126,11 @@ exports.sendVerifyCode = async (req, res) => {
         recipient: req.body.email,
         message: randomNumber
       };
-      const serviceID = "service_z4nls6p";
-      const templateID = "template_tekavzu";
+      const serviceID = "service_mt4brv8";
+      const templateID = "template_0gqxe2j";
       const userID = {
-        publicKey: 'lfNyYMLdX7ikJM5Eq',
-        privateKey: 'YSiwbwwHa_ZAde0VTzVpb'
+        publicKey: 'Dyq7ZSG0gLrFj9gZV',
+        privateKey: 'TZiuJMoAKS4oBzFG63Q0a'
       }
       const response = await emailjs.send(serviceID, templateID, templateParams, userID);
       console.log(req.body.email, 'verify code send success', response.status, response.text);
