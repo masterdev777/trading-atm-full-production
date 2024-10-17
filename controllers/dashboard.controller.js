@@ -59,7 +59,37 @@ exports.deleteAccount = async (req, res) => {
 
 /*integrations*/
 
-//tradelocker
+exports.getMasterLevelByAccountId = async (req, res) => {
+  try {
+    const { account_id, type } = req.body;
+    const user_id = req.user.id;
+    const table_name = (type === "tld" || type === "tll") ? "masters" : type === "mt4" ? "metatrader_masters" : "metatrader5_masters";
+    const account = await client.query(
+      `SELECT level
+      FROM ${table_name}
+      WHERE account_id = $1
+      AND user_id = $2`,
+      [
+        account_id,
+        user_id
+      ]
+    );
+    const level = await client.query(
+      `SELECT *
+      FROM level_limit
+      WHERE level = $1`,
+      [
+        account.rows[0].level
+      ]
+    );
+    await res.status(200).send({ levelIndex: level.rows[0].id - 1 });
+  }
+  catch {
+    await res.status(501).send("Server Error");
+  }
+}
+
+//integrations-tradelocker
 
 //Add Tradelocker Master Account to our Platform Endpoint
 exports.addMasterAccount = async (req, res) => {
@@ -101,7 +131,7 @@ exports.addMasterAccount = async (req, res) => {
           [
             index_level + 1
           ]
-        );
+        );p
         if (balance < level_limit.rows[0].plan_price) {
           await res.status(201).send("Your account balance is not sufficient. Please charge balance!");
           return;
@@ -122,23 +152,11 @@ exports.addMasterAccount = async (req, res) => {
           status: "completed",
           description: type.toUpperCase() + " account (" + acc_name + " " + level_limit.rows[0].level + " plan)",
         }
-        const user = await client.query(
-          `UPDATE users 
-          SET masters = array_append(masters, $1),
-          balance = $2,
-          transaction_history = array_append(transaction_history, $3)
-          WHERE id = ${id}
-          RETURNING *`,
-          [
-            JSON.stringify(new_master),
-            balance - level_limit.rows[0].plan_price,
-            new_transaction_history
-          ]
-        );
 
         await client.query(
           `INSERT INTO masters 
-            (registered_at, 
+            (registered_at,
+            profit_share_update_date, 
             acc_num, 
             account_balance, 
             access_token, 
@@ -156,7 +174,6 @@ exports.addMasterAccount = async (req, res) => {
             lose_count, 
             history_positions, 
             take_stop, 
-            balance_pl_pairs, 
             total_pl_amount,
             profit_share,
             about_me,
@@ -171,6 +188,7 @@ exports.addMasterAccount = async (req, res) => {
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30) 
             RETURNING *`,
           [
+            formattedDate,
             formattedDate,
             acc_num,
             account_balance,
@@ -189,7 +207,6 @@ exports.addMasterAccount = async (req, res) => {
             0,
             [],
             [],
-            [],
             0,
             profit_share,
             description,
@@ -206,6 +223,46 @@ exports.addMasterAccount = async (req, res) => {
             id
           ]
         );
+        const user = await client.query(
+          `UPDATE users 
+          SET masters = array_append(masters, $1),
+          balance = $2,
+          transaction_history = array_append(transaction_history, $3)
+          WHERE id = ${id}
+          RETURNING *`,
+          [
+            JSON.stringify(new_master),
+            balance - level_limit.rows[0].plan_price,
+            new_transaction_history
+          ]
+        );
+        const secret_name = JSON.stringify({
+          time: moment(formattedDate).format('YYYY/MM/DD hh:mm:ss A'),
+          type: "subscription",
+          account_id: acc_id,
+          account_type: type,
+          amount: level_limit.rows[0].plan_price,
+          user_id: id,
+        });
+        const uniqueId = uuidv5(secret_name, MY_NAMESPACE);
+        const messages = await client.query(
+          `INSERT INTO notifications
+            (id, receiver_id, message, read, time, type)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            RETURNING *`,
+          [
+            uniqueId,
+            id,
+            "You've paid $" + level_limit.rows[0].plan_price + " for entering tradelocker master account " + acc_name + " at " + moment(formattedDate).format('YYYY/MM/DD hh:mm:ss A'),
+            false,
+            formattedDate,
+            "subscription"
+          ]
+        );
+        const io = getSocketInstance();
+        if (socketUsers[id]) {
+          io.to(id).emit("notification", messages.rows[0]);
+        }
         const accounts = await getMyAllAccounts(user.rows[0]);
         await res.status(200).send({ user: user.rows[0], accounts: accounts });
       }
@@ -269,23 +326,6 @@ exports.addCopierAccount = async (req, res) => {
           status: "completed",
           description: type.toUpperCase() + " account (" + acc_name + ")",
         }
-        const new_copier = {
-          type: type,
-          account_id: acc_id
-        }
-        const myData = await client.query(
-          `UPDATE users 
-              SET copiers = array_append(copiers, $1),
-              balance = $2,
-              transaction_history = array_append(transaction_history, $3) 
-              WHERE id = ${id}
-              RETURNING *`,
-          [
-            JSON.stringify(new_copier),
-            req.user.balance - copier_plan_price.rows[0].price,
-            new_transaction_history
-          ]
-        );
         await client.query(
           `INSERT INTO copiers 
             (acc_num, 
@@ -299,7 +339,8 @@ exports.addCopierAccount = async (req, res) => {
             account_server_name, 
             type, 
             my_master_id, 
-            my_master_name, 
+            my_master_name,
+            my_master_type, 
             status, 
             copier_pl, 
             position_pair, 
@@ -320,7 +361,7 @@ exports.addCopierAccount = async (req, res) => {
             permission,
             user_id,
             follow_profit_share_change) 
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32) 
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33) 
             RETURNING *`,
           [
             acc_num,
@@ -333,6 +374,7 @@ exports.addCopierAccount = async (req, res) => {
             acc_name,
             server_name,
             type,
+            "",
             "",
             "",
             "Nothing",
@@ -360,6 +402,50 @@ exports.addCopierAccount = async (req, res) => {
             "no"
           ]
         );
+        const new_copier = {
+          type: type,
+          account_id: acc_id
+        }
+        const myData = await client.query(
+          `UPDATE users 
+              SET copiers = array_append(copiers, $1),
+              balance = $2,
+              transaction_history = array_append(transaction_history, $3) 
+              WHERE id = ${id}
+              RETURNING *`,
+          [
+            JSON.stringify(new_copier),
+            req.user.balance - copier_plan_price.rows[0].price,
+            new_transaction_history
+          ]
+        );
+        const secret_name = JSON.stringify({
+          time: moment(formattedDate).format('YYYY/MM/DD hh:mm:ss A'),
+          type: "subscription",
+          account_id: acc_id,
+          account_type: type,
+          amount: copier_plan_price.rows[0].price,
+          user_id: id,
+        });
+        const uniqueId = uuidv5(secret_name, MY_NAMESPACE);
+        const messages = await client.query(
+          `INSERT INTO notifications
+            (id, receiver_id, message, read, time, type)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            RETURNING *`,
+          [
+            uniqueId,
+            id,
+            "You've paid $" + copier_plan_price.rows[0].price + " for entering tradelocker copier account " + acc_name + " at " + moment(formattedDate).format('YYYY/MM/DD hh:mm:ss A'),
+            false,
+            formattedDate,
+            "subscription"
+          ]
+        );
+        const io = getSocketInstance();
+        if (socketUsers[id]) {
+          io.to(id).emit("notification", messages.rows[0]);
+        }
         const accounts = await getMyAllAccounts(myData.rows[0]);
         await res.status(200).send({ user: myData.rows[0], accounts: accounts });
       }
@@ -376,7 +462,7 @@ exports.addCopierAccount = async (req, res) => {
   }
 }
 
-/*metatrader*/
+//integrations-metatrader
 
 //Add Metatrader Master Account to our Platform Endpoint
 exports.addMetatraderMasterAccount = async (req, res) => {
@@ -445,22 +531,11 @@ exports.addMetatraderMasterAccount = async (req, res) => {
           status: "completed",
           description: type.toUpperCase() + " account (" + acc_name + " " + level_limit.rows[0].level + " plan)",
         }
-        const user = await client.query(
-          `UPDATE users 
-          SET masters = array_append(masters, $1),
-          balance = $2,
-          transaction_history = array_append(transaction_history, $3)
-          WHERE id = ${id}
-          RETURNING *`,
-          [
-            JSON.stringify(new_master),
-            balance - level_limit.rows[0].plan_price,
-            new_transaction_history
-          ]
-        );
+
         await client.query(
           `INSERT INTO ${database_name} 
-            (registered_at, 
+            (registered_at,
+            profit_share_update_date, 
             token, 
             avatar, 
             account_id, 
@@ -487,9 +562,10 @@ exports.addMetatraderMasterAccount = async (req, res) => {
             payment_date,
             permission,
             user_id) 
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27) 
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28) 
             RETURNING *`,
           [
+            formattedDate,
             formattedDate,
             token,
             avatar,
@@ -522,6 +598,46 @@ exports.addMetatraderMasterAccount = async (req, res) => {
             id
           ]
         );
+        const user = await client.query(
+          `UPDATE users 
+          SET masters = array_append(masters, $1),
+          balance = $2,
+          transaction_history = array_append(transaction_history, $3)
+          WHERE id = ${id}
+          RETURNING *`,
+          [
+            JSON.stringify(new_master),
+            balance - level_limit.rows[0].plan_price,
+            new_transaction_history
+          ]
+        );
+        const secret_name = JSON.stringify({
+          time: moment(formattedDate).format('YYYY/MM/DD hh:mm:ss A'),
+          type: "subscription",
+          account_id: acc_id,
+          account_type: type,
+          amount: level_limit.rows[0].plan_price,
+          user_id: id,
+        });
+        const uniqueId = uuidv5(secret_name, MY_NAMESPACE);
+        const messages = await client.query(
+          `INSERT INTO notifications
+            (id, receiver_id, message, read, time, type)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            RETURNING *`,
+          [
+            uniqueId,
+            id,
+            "You've paid $" + level_limit.rows[0].plan_price + " for entering " + type + " master account " + acc_name + " at " + moment(formattedDate).format('YYYY/MM/DD hh:mm:ss A'),
+            false,
+            formattedDate,
+            "subscription"
+          ]
+        );
+        const io = getSocketInstance();
+        if (socketUsers[id]) {
+          io.to(id).emit("notification", messages.rows[0]);
+        }
         const accounts = await getMyAllAccounts(user.rows[0]);
         await res.status(200).send({ user: user.rows[0], accounts: accounts });
       }
@@ -591,23 +707,6 @@ exports.addMetatraderCopierAccount = async (req, res) => {
           status: "completed",
           description: type.toUpperCase() + " account (" + acc_name + ")",
         }
-        const new_copier = {
-          type: type,
-          account_id: acc_id
-        }
-        const myData = await client.query(
-          `UPDATE users 
-              SET copiers = array_append(copiers, $1),
-              balance = $2,
-              transaction_history = array_append(transaction_history, $3) 
-              WHERE id = ${id}
-              RETURNING *`,
-          [
-            JSON.stringify(new_copier),
-            req.user.balance - copier_plan_price.rows[0].price,
-            new_transaction_history
-          ]
-        );
         await client.query(
           `INSERT INTO ${database_name} 
             (registered_at, 
@@ -638,8 +737,12 @@ exports.addMetatraderCopierAccount = async (req, res) => {
             payment_date,
             permission,
             user_id,
-            follow_profit_share_change) 
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29) 
+            follow_profit_share_change,
+            my_master_id,
+            my_master_name,
+            my_master_type,
+            order_pair) 
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33) 
             RETURNING *`,
           [
             formattedDate,
@@ -673,9 +776,57 @@ exports.addMetatraderCopierAccount = async (req, res) => {
             formattedDate,
             true,
             id,
-            "no"
+            "no",
+            "",
+            "",
+            "",
+            []
           ]
         );
+        const new_copier = {
+          type: type,
+          account_id: acc_id
+        }
+        const myData = await client.query(
+          `UPDATE users 
+              SET copiers = array_append(copiers, $1),
+              balance = $2,
+              transaction_history = array_append(transaction_history, $3) 
+              WHERE id = ${id}
+              RETURNING *`,
+          [
+            JSON.stringify(new_copier),
+            req.user.balance - copier_plan_price.rows[0].price,
+            new_transaction_history
+          ]
+        );
+        const secret_name = JSON.stringify({
+          time: moment(formattedDate).format('YYYY/MM/DD hh:mm:ss A'),
+          type: "subscription",
+          account_id: acc_id,
+          account_type: type,
+          amount: copier_plan_price.rows[0].price,
+          user_id: id,
+        });
+        const uniqueId = uuidv5(secret_name, MY_NAMESPACE);
+        const messages = await client.query(
+          `INSERT INTO notifications
+            (id, receiver_id, message, read, time, type)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            RETURNING *`,
+          [
+            uniqueId,
+            id,
+            "You've paid $" + copier_plan_price.rows[0].price + " for entering " + type + " copier account " + acc_name + " at " + moment(formattedDate).format('YYYY/MM/DD hh:mm:ss A'),
+            false,
+            formattedDate,
+            "subscription"
+          ]
+        );
+        const io = getSocketInstance();
+        if (socketUsers[id]) {
+          io.to(id).emit("notification", messages.rows[0]);
+        }
         const accounts = await getMyAllAccounts(myData.rows[0]);
         await res.status(200).send({ user: myData.rows[0], accounts: accounts });
       }
@@ -939,19 +1090,117 @@ exports.removeFollowMasterAccount = async (req, res) => {
 
 exports.upgradeMasterPlan = async (req, res) => {
   try {
-    const { type, acc_id, plan, upgradeType } = req.body;
+    const { type, acc_id, plan } = req.body;
     const table_name = (type === "tld" || type === "tll") ? "masters" : type === "mt4" ? "metatrader_masters" : "metatrader5_masters";
-    const level = plan === 1 ? "silver" : plan === 2 ? "gold" : "hero";
-    await client.query(
-      `UPDATE ${table_name}
-      SET level = $1
-      WHERE account_id = $2`,
+    const prev_acc_level = await client.query(
+      `SELECT payment_date,
+      level,
+      account_name
+      FROM ${table_name}
+      WHERE account_id = $1`,
       [
-        level,
         acc_id
       ]
     );
-    await res.status(200).send("ok");
+    const prev_level_limit = await client.query(
+      `SELECT * FROM level_limit
+      WHERE level = $1`,
+      [
+        prev_acc_level.rows[0].level
+      ]
+    );
+    const new_level_limit = await client.query(
+      `SELECT * FROM level_limit
+      WHERE id = $1`,
+      [
+        plan + 1
+      ]
+    );
+    if (new_level_limit.rows[0].id !== prev_level_limit.rows[0].id) {
+      const newDate = new Date();
+      const formattedDate = newDate.toISOString();
+      const timestamp = newDate - prev_acc_level.rows[0].payment_date;
+      const unit = 24 * 60 * 60 * 1000;
+      const days = (timestamp / unit);
+      if (days < 7) {
+        await res.status(202).send("You are permitted to upgrade only once per week.");
+        return;
+      }
+      const price = new_level_limit.rows[0].plan_price + ((days / 30) - 1) * prev_level_limit.rows[0].plan_price;
+      const balance = req.user.balance;
+      if (balance < price) {
+        await res.status(201).send("Insufficient balance to upgrade! Please charge balance to updagrade plan.");
+      }
+      else {
+        await client.query(
+          `UPDATE ${table_name}
+          SET level = $1,
+          payment_date = $2
+          WHERE account_id = $3`,
+          [
+            new_level_limit.rows[0].level,
+            formattedDate,
+            acc_id
+          ]
+        );
+        const new_transaction_history = {
+          transaction_id: generateTransactionId(req.user.id),
+          invoice_id: new_level_limit.rows[0].level,
+          kind: "USD",
+          payment_date: formattedDate,
+          type: new_level_limit.rows[0].id > prev_level_limit.rows[0].id ? "Upgrade" : "Downgrade",
+          amount: price,
+          status: "completed",
+          description: type.toUpperCase() + " account (" + prev_acc_level.rows[0].account_name + " " + new_level_limit.rows[0].level + " plan)",
+        }
+        await client.query(
+          `UPDATE users
+          SET balance = $1,
+          transaction_history = array_append(transaction_history, $2)
+          WHERE id = $3`,
+          [
+            balance - price,
+            new_transaction_history,
+            req.user.id
+          ]
+        );
+        const secret_name = JSON.stringify({
+          time: moment(formattedDate).format('YYYY/MM/DD hh:mm:ss A'),
+          type: new_level_limit.rows[0].id > prev_level_limit.rows[0].id ? "upgrade" : "downgrade",
+          account_id: acc_id,
+          account_type: type,
+          amount: price,
+          user_id: req.user.id,
+        });
+        const uniqueId = uuidv5(secret_name, MY_NAMESPACE);
+        const messages = await client.query(
+          `INSERT INTO notifications
+          (id, receiver_id, message, read, time, type)
+          VALUES ($1, $2, $3, $4, $5, $6)
+          RETURNING *`,
+          [
+            uniqueId,
+            req.user.id,
+            (price > 0 ? ("You've paid $" + price.toFixed(2)) : ("You received $" + -price.toFixed(2))) + " to " + (new_level_limit.rows[0].id > prev_level_limit.rows[0].id ? "upgrade" : "downgrade") + " account " + prev_acc_level.rows[0].account_name + " at " + moment(formattedDate).format('YYYY/MM/DD hh:mm:ss A'),
+            false,
+            formattedDate,
+            new_level_limit.rows[0].id > prev_level_limit.rows[0].id ? "upgrade" : "downgrade"
+          ]
+        );
+        const io = getSocketInstance();
+        if (socketUsers[req.user.id]) {
+          const data = {
+            balance: balance - price,
+            messages: messages.rows[0]
+          }
+          io.to(req.user.id).emit("update_balance", data);
+        }
+        await res.status(200).send("ok");
+      }
+    }
+    else {
+      await res.status(202).send("Same plan!");
+    }
   }
   catch {
     await res.status(501).send("Server Error!");
@@ -1163,12 +1412,8 @@ exports.updateMasterDescription = async (req, res) => {
           const { copier_users } = await getCopierUsers(updated_data.rows[0].account_id, updated_data.rows[0].type);
           const io = getSocketInstance();
           if (socketUsers[updated_data.rows[0].user_id]) io.to(updated_data.rows[0].user_id).emit('notification', messages.rows[0]);
-          console.log(copier_users)
           copier_users?.map(async (copier, index) => {
             console.log(copier.user_id, socketUsers[copier.user_id]);
-            await client.query(
-              ``
-            )
             const copier_secret_name = JSON.stringify({
               time: moment(formattedDate).format('YYYY/MM/DD hh:mm:ss A'),
               type: "change_hourly_pay_amount",
@@ -1901,7 +2146,7 @@ exports.updateCopierRiskSettings = async (req, res) => {
       [
         riskType,
         forceMinMax,
-        riskSetting,
+        riskSetting ? parseFloat(riskSetting) : 0,
         accountId,
       ]
     );
@@ -2002,7 +2247,7 @@ exports.getTradingHistory = async (req, res) => {
     const filtered_data = tradingHistory?.filter((history, index) => {
       if (index >= current_page * display_count && index < (current_page + 1) * display_count) return history;
     });
-    res.status(200).send({ tradingHistory: filtered_data?.length ? filtered_data : [] , tradingCount: tradingHistory?.length ? tradingHistory.length : 0})
+    res.status(200).send({ tradingHistory: filtered_data?.length ? filtered_data : [], tradingCount: tradingHistory?.length ? tradingHistory.length : 0 })
   }
   catch {
     await res.status(501).send("failed");
@@ -2012,7 +2257,7 @@ exports.getTradingHistory = async (req, res) => {
 exports.getCopierTradingHistory = async (req, res) => {
   try {
     const { current_page, display_count, copier_acc_id, copier_acc_type } = req.body;
-    console.log(current_page, display_count, copier_acc_id, copier_acc_type )
+    console.log(current_page, display_count, copier_acc_id, copier_acc_type)
     const contract = await client.query(
       `SELECT pay_history
       FROM contract
@@ -2029,7 +2274,7 @@ exports.getCopierTradingHistory = async (req, res) => {
       if (index >= current_page * display_count && index < (current_page + 1) * display_count) return history;
     });
     console.log(filtered_data)
-    res.status(200).send({ tradingHistory: filtered_data?.length ? filtered_data : [] , tradingCount: tradingHistory?.length ? tradingHistory.length : 0})
+    res.status(200).send({ tradingHistory: filtered_data?.length ? filtered_data : [], tradingCount: tradingHistory?.length ? tradingHistory.length : 0 })
   }
   catch {
     await res.status(501).send("failed");

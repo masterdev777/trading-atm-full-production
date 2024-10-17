@@ -1,7 +1,7 @@
 const client = require("../config/db/db.js");
 
 //Update User Balance of Database based on new currency price Function
-const updateBalance = async () => {
+const updateBalance = async (io, socketUsers) => {
   try {
     console.log("start ---------------------> update balance");
     const users = await client.query(
@@ -26,6 +26,7 @@ const updateBalance = async () => {
           if (type === "Charge") balance += amount;
           if (type === "Withdraw") balance -= amount;
           if (type === "Subscription") balance -= amount;
+          if (type === "Upgrade" || type === "Downgrade") balance -= amount;
         });
       }
       if (trading_history) {
@@ -41,9 +42,16 @@ const updateBalance = async () => {
           SET balance = $1 
           WHERE id = '${user.id}'`,
         [
-          balance > 0 ? balance : 0
+          balance
         ]
-      )
+      );
+      if (socketUsers[user.id]) {
+        const data = {
+          balance: balance,
+          messages: ""
+        }
+        io.to(user.id).emit("update_balance", data);
+      }
     });
 
     await Promise.all(promises);

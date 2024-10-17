@@ -7,11 +7,14 @@ var passport = require("passport"),
 router.post("/delete-account", requireAuth, dashboardCtr.deleteAccount);
 
 /*integration*/
-//tradelocker
+
+router.post("/get-master-level-by-accountid", requireAuth, dashboardCtr.getMasterLevelByAccountId);
+
+//integration-tradelocker
 router.post("/add-master-account", requireAuth, dashboardCtr.addMasterAccount);
 router.post("/add-copier-account", requireAuth, dashboardCtr.addCopierAccount);
 
-//metatrader
+//integration-metatrader
 router.post("/add-metatrader-master-account", requireAuth, dashboardCtr.addMetatraderMasterAccount);
 router.post("/add-metatrader-copier-account", requireAuth, dashboardCtr.addMetatraderCopierAccount);
 

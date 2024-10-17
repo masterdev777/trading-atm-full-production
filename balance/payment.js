@@ -137,7 +137,7 @@ const Payment = async (io, socketUsers, interval) => {
               balance: copier_balance.rows[0].balance
             }
             if (socketUsers[copier_user_id]) {
-              io.to(master_user_id).emit('update_balance', copierData);
+              io.to(copier_user_id).emit('update_balance', copierData);
             }
   
             // for

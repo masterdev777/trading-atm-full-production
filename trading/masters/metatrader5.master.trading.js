@@ -243,13 +243,14 @@ const risk_setting_func = (master_account_balance, copier_account, opened_order,
   let volume = opened_order.lots;
   switch (risk_type) {
     case 'fixed_lot':
-      volume = opened_order.lots;
+      volume = risk_setting;
       break;
     case 'balance_multiplier':
-      volume = Math.floor(((copier_account_balance * 100) / (master_account_balance * 100)) * opened_order.lots * 100) / 100;
+      // volume = Math.floor(((copier_account_balance * 100) / (master_account_balance * 100)) * opened_order.lots * 100) / 100;
+      volume = opened_order.lots;
       break;
     case 'lot_multiplier':
-      volume = Math.floor(opened_order.lots * risk_setting) / 100;
+      volume = risk_setting === 100 ? opened_order.lots : Math.floor(opened_order.lots * risk_setting) / 100;
       break;
     case 'fixed_balance_multiplier':
       volume = Math.floor((copier_account_balance * 100) / (risk_setting * 100) * opened_order.lots * 100) / 100;
@@ -267,7 +268,27 @@ const risk_setting_func = (master_account_balance, copier_account, opened_order,
       else stopLoss = opened_order.closePrice - parseFloat(follow_tp_st?.fixed_stop_loss_size) * pip_value;
     }
     else {
-      stopLoss = opened_order.stopLoss > 0 ? (follow_tp_st?.stop_loss_refinement ? (opened_order.stopLoss + parseFloat(follow_tp_st?.stop_loss_refinement_size) * pip_value) : opened_order.stopLoss) : 0;
+      if (risk_type !== "balance_multiplier") stopLoss = opened_order.stopLoss > 0 ? (follow_tp_st?.stop_loss_refinement ? (opened_order.stopLoss + parseFloat(follow_tp_st?.stop_loss_refinement_size) * pip_value) : opened_order.stopLoss) : 0;
+      else {
+        if (opened_order.orderType === 'Sell') {
+          const diff = opened_order.stopLoss - opened_order.closePrice;
+          const master_risk = master_account_balance !== 0 ? (diff / master_account_balance) : 0;
+          const copier_risk = master_risk * risk_setting / 100;
+          const copier_diff = copier_risk * copier_account_balance;
+          const temp_stop_loss = opened_order.closePrice + copier_diff;
+          stopLoss = opened_order.stopLoss > 0 ? (follow_tp_st?.stop_loss_refinement ?
+            (temp_stop_loss + parseFloat(follow_tp_st?.stop_loss_refinement_size) * pip_value) : temp_stop_loss) : 0;
+        }
+        else {
+          const diff = opened_order.closePrice - opened_order.stopLoss;
+          const master_risk = master_account_balance !== 0 ? (diff / master_account_balance) : 0;
+          const copier_risk = master_risk * risk_setting / 100;
+          const copier_diff = copier_risk * copier_account_balance;
+          const temp_stop_loss = opened_order.closePrice - copier_diff;
+          stopLoss = opened_order.stopLoss > 0 ? (follow_tp_st?.stop_loss_refinement ?
+            (temp_stop_loss + parseFloat(follow_tp_st?.stop_loss_refinement_size) * pip_value) : temp_stop_loss) : 0;
+        }
+      }
     }
   }
   if (follow_tp_st?.take_profit) {
@@ -276,13 +297,34 @@ const risk_setting_func = (master_account_balance, copier_account, opened_order,
       else takeProfit = opened_order.openPrice + parseFloat(follow_tp_st?.fixed_take_profit_size) * pip_value;
     }
     else {
-      takeProfit = opened_order.takeProfit > 0 ? (follow_tp_st?.take_profit_refinement ? (opened_order.takeProfit + parseFloat(follow_tp_st?.take_profit_refinement_size) * pip_value) : opened_order.takeProfit) : 0;
+      if (opened_order.orderType === 'Sell') {
+        const diff = opened_order.openPrice - opened_order.takeProfit;
+        const master_risk = master_account_balance !== 0 ? (diff / master_account_balance) : 0;
+        const copier_risk = master_risk * risk_setting / 100;
+        const copier_diff = copier_risk * copier_account_balance;
+        const temp_take_profit = opened_order.openPrice - copier_diff;
+        takeProfit = opened_order.takeProfit > 0 ? (follow_tp_st?.take_profit_refinement ?
+          (temp_take_profit + parseFloat(follow_tp_st?.take_profit_refinement_size) * pip_value) : temp_take_profit) : 0;
+      }
+      else {
+        const diff = opened_order.takeProfit - opened_order.openPrice;
+        const master_risk = master_account_balance !== 0 ? (diff / master_account_balance) : 0;
+        const copier_risk = master_risk * risk_setting / 100;
+        const copier_diff = copier_risk * copier_account_balance;
+        const temp_take_profit = opened_order.openPrice + copier_diff;
+        takeProfit = opened_order.takeProfit > 0 ? (follow_tp_st?.take_profit_refinement ?
+          (temp_take_profit + parseFloat(follow_tp_st?.take_profit_refinement_size) * pip_value) : temp_take_profit) : 0;
+      }
     }
   }
   return { volume, stopLoss, takeProfit };
 }
 
-const calc_tp_st = (follow_tp_st, exist_order, pip_value) => {
+const calc_tp_st = (master_account_balance, copier_account, exist_order, pip_value) => {
+  const risk_type = copier_account.risk_type;
+  const risk_setting = copier_account.risk_setting;
+  const copier_account_balance = copier_account.account_balance;
+  const follow_tp_st = copier_account.follow_tp_st;
   let stopLoss = 0;
   let takeProfit = 0;
   if (follow_tp_st?.stop_loss) {
@@ -291,7 +333,27 @@ const calc_tp_st = (follow_tp_st, exist_order, pip_value) => {
       else stopLoss = exist_order.closePrice - parseFloat(follow_tp_st?.fixed_stop_loss_size) * pip_value;
     }
     else {
-      stopLoss = exist_order.stopLoss > 0 ? (follow_tp_st?.stop_loss_refinement ? (exist_order.stopLoss + parseFloat(follow_tp_st?.stop_loss_refinement_size) * pip_value) : exist_order.stopLoss) : 0;
+      if (risk_type !== "balance_multiplier") stopLoss = exist_order.stopLoss > 0 ? (follow_tp_st?.stop_loss_refinement ? (exist_order.stopLoss + parseFloat(follow_tp_st?.stop_loss_refinement_size) * pip_value) : exist_order.stopLoss) : 0;
+      else {
+        if (exist_order.orderType === 'Sell') {
+          const diff = exist_order.stopLoss - exist_order.closePrice;
+          const master_risk = master_account_balance !== 0 ? (diff / master_account_balance) : 0;
+          const copier_risk = master_risk * risk_setting / 100;
+          const copier_diff = copier_risk * copier_account_balance;
+          const temp_stop_loss = exist_order.closePrice + copier_diff;
+          stopLoss = exist_order.stopLoss > 0 ? (follow_tp_st?.stop_loss_refinement ?
+            (temp_stop_loss + parseFloat(follow_tp_st?.stop_loss_refinement_size) * pip_value) : temp_stop_loss) : 0;
+        }
+        else {
+          const diff = exist_order.closePrice - exist_order.stopLoss;
+          const master_risk = master_account_balance !== 0 ? (diff / master_account_balance) : 0;
+          const copier_risk = master_risk * risk_setting / 100;
+          const copier_diff = copier_risk * copier_account_balance;
+          const temp_stop_loss = exist_order.closePrice - copier_diff;
+          stopLoss = exist_order.stopLoss > 0 ? (follow_tp_st?.stop_loss_refinement ?
+            (temp_stop_loss + parseFloat(follow_tp_st?.stop_loss_refinement_size) * pip_value) : temp_stop_loss) : 0;
+        }
+      }
     }
   };
   if (follow_tp_st?.take_profit) {
@@ -300,22 +362,43 @@ const calc_tp_st = (follow_tp_st, exist_order, pip_value) => {
       else takeProfit = exist_order.openPrice + parseFloat(follow_tp_st?.fixed_take_profit_size) * pip_value;
     }
     else {
-      takeProfit = exist_order.takeProfit > 0 ? (follow_tp_st?.take_profit_refinement ? (exist_order.takeProfit + parseFloat(follow_tp_st?.take_profit_refinement_size) * pip_value) : exist_order.takeProfit) : 0;
+      if (risk_type !== "balance_multiplier") takeProfit = exist_order.takeProfit > 0 ? (follow_tp_st?.take_profit_refinement ? (exist_order.takeProfit + parseFloat(follow_tp_st?.take_profit_refinement_size) * pip_value) : exist_order.takeProfit) : 0;
+      else {
+        if (exist_order.orderType === 'Sell') {
+          const diff = exist_order.openPrice - exist_order.takeProfit;
+          const master_risk = master_account_balance !== 0 ? (diff / master_account_balance) : 0;
+          const copier_risk = master_risk * risk_setting / 100;
+          const copier_diff = copier_risk * copier_account_balance;
+          const temp_take_profit = exist_order.openPrice - copier_diff;
+          takeProfit = exist_order.takeProfit > 0 ? (follow_tp_st?.take_profit_refinement ?
+            (exist_order.takeProfit + parseFloat(follow_tp_st?.take_profit_refinement_size) * pip_value) : temp_take_profit) : 0;
+        }
+        else {
+          const diff = exist_order.takeProfit - exist_order.openPrice;
+          const master_risk = master_account_balance !== 0 ? (diff / master_account_balance) : 0;
+          const copier_risk = master_risk * risk_setting / 100;
+          const copier_diff = copier_risk * copier_account_balance;
+          const temp_take_profit = exist_order.openPrice + copier_diff;
+          takeProfit = exist_order.takeProfit > 0 ? (follow_tp_st?.take_profit_refinement ?
+            (temp_take_profit + parseFloat(follow_tp_st?.take_profit_refinement_size) * pip_value) : temp_take_profit) : 0;
+        }
+      }
     }
   };
   return { stopLoss, takeProfit };
 }
 
-const calc_volume = (master_account_balance, copier_account_balance, risk_type, risk_setting, history_order_lot, exist_order_lot) => {
+const calc_volume = (copier_account_balance, risk_type, risk_setting, history_order_lot, exist_order_lot) => {
   switch (risk_type) {
     case 'fixed_lot':
-      volume = history_order_lot - exist_order_lot;
+      volume = history_order_lot - risk_setting;
       break;
     case 'balance_multiplier':
-      volume = Math.floor(((copier_account_balance * 100) / (master_account_balance * 100)) * (history_order_lot - exist_order_lot) * 100) / 100;
+      // volume = Math.floor(((copier_account_balance * 100) / (master_account_balance * 100)) * (history_order_lot - exist_order_lot) * 100) / 100;
+      volume = history_order_lot - exist_order_lot;
       break;
     case 'lot_multiplier':
-      volume = Math.floor((history_order_lot - exist_order_lot) * risk_setting) / 100;
+      volume = risk_setting === 100 ? (history_order_lot - exist_order_lot) : Math.floor((history_order_lot - exist_order_lot) * risk_setting) / 100;
       break;
     case 'fixed_balance_multiplier':
       volume = Math.floor(copier_account_balance / risk_setting * 100 * (history_order_lot - exist_order_lot)) / 100;
@@ -474,7 +557,7 @@ const runMetatrader5TradingFunction = async (io, socketUsers) => {
                           }
                         }).then(async (info) => {
                           if (info.statusText === "OK") {
-                            const { stopLoss, takeProfit } = calc_tp_st(mt4_copier_account.rows[0].follow_tp_st, exist_order, info.data.symbol.point);
+                            const { stopLoss, takeProfit } = calc_tp_st(master.account_balance, mt4_copier_account.rows[0], exist_order, info.data.symbol.point);
                             await metatrader4Axios.get('/OrderModify', {
                               params: {
                                 id: mt4_copier_account.rows[0].token,
@@ -524,7 +607,7 @@ const runMetatrader5TradingFunction = async (io, socketUsers) => {
                         const copier_order = mt4_copier_account.rows[0].history_orders?.find(item => item.ticket === pair.copier_order_id);
                         let volume = 0;
                         if (exist_order) {
-                          volume = calc_volume(master.account_balance, mt4_copier_account.rows[0].account_balance, mt4_copier_account.rows[0].risk_type, mt4_copier_account.rows[0].risk_setting, history_order.lots, exist_order.lots);
+                          volume = calc_volume(mt4_copier_account.rows[0].account_balance, mt4_copier_account.rows[0].risk_type, mt4_copier_account.rows[0].risk_setting, history_order.lots, exist_order.lots);
                           if (volume === 0) return;
                         }
                         const real_lot_size = (copier_order && copier_order.lots <= volume) ? 0 : volume;
@@ -631,7 +714,7 @@ const runMetatrader5TradingFunction = async (io, socketUsers) => {
                         }).then(async (info) => {
                           if (info.statusText === "OK") {
                             console.log(info.data.symbolInfo.points);
-                            const { stopLoss, takeProfit } = calc_tp_st(mt5_copier_account.rows[0].follow_tp_st, exist_order, info.data.symbolInfo.points);
+                            const { stopLoss, takeProfit } = calc_tp_st(master.account_balance, mt5_copier_account.rows[0], exist_order, info.data.symbolInfo.points);
                             console.log(stopLoss, takeProfit)
                             await metatrader5Axios.get('/OrderModify', {
                               params: {
@@ -682,7 +765,7 @@ const runMetatrader5TradingFunction = async (io, socketUsers) => {
                         const copier_order = mt5_copier_account.rows[0].history_orders?.find(item => item.ticket === pair.copier_order_id);
                         let volume = 0;
                         if (exist_order) {
-                          volume = calc_volume(master.account_balance, mt5_copier_account.rows[0].account_balance, mt5_copier_account.rows[0].risk_type, mt5_copier_account.rows[0].risk_setting, history_order.lots, exist_order.lots);
+                          volume = calc_volume(mt5_copier_account.rows[0].account_balance, mt5_copier_account.rows[0].risk_type, mt5_copier_account.rows[0].risk_setting, history_order.lots, exist_order.lots);
                           if (volume === 0) return;
                         }
                         const real_lot_size = (copier_order && copier_order.lots <= volume) ? 0 : volume;
@@ -762,7 +845,7 @@ const runMetatrader5TradingFunction = async (io, socketUsers) => {
                           WHERE symbol = '${exist_order.symbol}'`
                       );
                       if (symbol_id.rowCount === 0) return;
-                      const { stopLoss, takeProfit } = calc_tp_st(tl_copier_account.rows[0].follow_tp_st, exist_order, symbol_id.rows[0].pip_value);
+                      const { stopLoss, takeProfit } = calc_tp_st(master.account_balance, tl_copier_account.rows[0], exist_order, symbol_id.rows[0].pip_value);
                       const config = {
                         method: 'patch',
                         url: `${basic_url}/trade/positions/${pair.copier_position_id}`,
@@ -819,7 +902,7 @@ const runMetatrader5TradingFunction = async (io, socketUsers) => {
                       const copier_order = tl_copier_account.rows[0].history_positions?.find(item => item[0] === pair.copier_position_id);
                       let volume = 0;
                       if (exist_order) {
-                        volume = calc_volume(master.account_balance, tl_copier_account.rows[0].account_balance, tl_copier_account.rows[0].risk_type, tl_copier_account.rows[0].risk_setting, history_order.lots, exist_order.lots);
+                        volume = calc_volume(tl_copier_account.rows[0].account_balance, tl_copier_account.rows[0].risk_type, tl_copier_account.rows[0].risk_setting, history_order.lots, exist_order.lots);
                         if (volume === 0) return;
                       }
                       const real_lot_size = (copier_order && parseFloat(copier_order[4]) <= volume) ? 0 : volume;
