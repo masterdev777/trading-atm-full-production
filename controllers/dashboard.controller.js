@@ -1,6 +1,7 @@
 const client = require("../config/db/db.js");
 const { v5: uuidv5 } = require('uuid');
 const moment = require("moment");
+const { decryptData, encryptWithSymmetricKey } = require("../config/utils/encryptFunction.js");
 const { generateTransactionId } = require("../config/utils/getTransactionId.js");
 const { getMyAllAccounts } = require("./user.controller.js");
 const { getSocketInstance, socketUsers } = require("../socket/socket.js");
@@ -94,23 +95,35 @@ exports.getMasterLevelByAccountId = async (req, res) => {
 //Add Tradelocker Master Account to our Platform Endpoint
 exports.addMasterAccount = async (req, res) => {
   try {
+    const encryptedData = req.body.encrypted;
     const {
-      acc_num,
-      account_balance,
+      encrypted_acc_num,
+      encrypted_account_balance,
       access_token,
       refresh_token,
-      acc_name,
-      acc_id,
-      acc_email,
-      acc_password,
-      server_name,
-      type,
-      id,
-      profit_share,
+      encrypted_acc_name,
+      encrypted_acc_id,
+      encrypted_acc_email,
+      encrypted_acc_password,
+      encrypted_server_name,
+      encrypted_type,
+      encrypted_id,
+      encrypted_profit_share,
       description,
       avatar,
-      index_level
-    } = req.body;
+      encrypted_index_level
+    } = encryptedData;
+    const acc_num = JSON.parse(decryptData(encrypted_acc_num));
+    const account_balance = JSON.parse(decryptData(encrypted_account_balance));
+    const acc_name = JSON.parse(decryptData(encrypted_acc_name));
+    const acc_id = JSON.parse(decryptData(encrypted_acc_id));
+    const acc_email = JSON.parse(decryptData(encrypted_acc_email));
+    const acc_password = JSON.parse(decryptData(encrypted_acc_password));
+    const server_name = JSON.parse(decryptData(encrypted_server_name));
+    const type = JSON.parse(decryptData(encrypted_type));
+    const id = JSON.parse(decryptData(encrypted_id));
+    const profit_share = JSON.parse(decryptData(encrypted_profit_share));
+    const index_level = JSON.parse(decryptData(encrypted_index_level));
     const master_data = await client.query("SELECT * FROM masters WHERE account_id=$1", [
       acc_id,
     ]);
@@ -131,9 +144,10 @@ exports.addMasterAccount = async (req, res) => {
           [
             index_level + 1
           ]
-        );p
+        );
         if (balance < level_limit.rows[0].plan_price) {
-          await res.status(201).send("Your account balance is not sufficient. Please charge balance!");
+          const encryptedData = encryptWithSymmetricKey("Your account balance is not sufficient. Please charge balance!");
+          await res.status(201).send({ encrypted: encryptedData });
           return;
         }
         const myDate = new Date();
@@ -264,38 +278,52 @@ exports.addMasterAccount = async (req, res) => {
           io.to(id).emit("notification", messages.rows[0]);
         }
         const accounts = await getMyAllAccounts(user.rows[0]);
-        await res.status(200).send({ user: user.rows[0], accounts: accounts });
+        const encryptedData = encryptWithSymmetricKey({ user: user.rows[0], accounts: accounts });
+        await res.status(200).send({ encrypted: encryptedData });
       }
       else {
-        await res.status(201).send("This account had already been registered as copier!")
+        const encryptedData = encryptWithSymmetricKey("This account had already been registered as copier!");
+        await res.status(201).send({ encrypted: encryptedData })
       }
     }
     else {
-      await res.status(201).send("This account had already been registered as master!")
+      const encryptedData = encryptWithSymmetricKey("This account had already been registered as master!");
+      await res.status(201).send({ encrypted: encryptedData });
     }
   }
   catch {
-    await res.status(501).send("Server Error");
+    const encryptedData = encryptWithSymmetricKey("Server Error");
+    await res.status(501).send({ encrypted: encryptedData });
   }
 }
 
 //Add Tradelocker Copier Account to our Platform Endpoint
 exports.addCopierAccount = async (req, res) => {
   try {
+    const encryptedData = req.body.encrypted;
     const {
-      acc_num,
-      account_balance,
+      encrypted_acc_num,
+      encrypted_account_balance,
       access_token,
       refresh_token,
-      acc_name,
-      acc_id,
-      acc_email,
-      acc_password,
-      server_name,
-      type,
-      id,
+      encrypted_acc_name,
+      encrypted_acc_id,
+      encrypted_acc_email,
+      encrypted_acc_password,
+      encrypted_server_name,
+      encrypted_type,
+      encrypted_id,
       avatar
-    } = req.body;
+    } = encryptedData;
+    const acc_num = JSON.parse(decryptData(encrypted_acc_num));
+    const account_balance = JSON.parse(decryptData(encrypted_account_balance));
+    const acc_name = JSON.parse(decryptData(encrypted_acc_name));
+    const acc_id = JSON.parse(decryptData(encrypted_acc_id));
+    const acc_email = JSON.parse(decryptData(encrypted_acc_email));
+    const acc_password = JSON.parse(decryptData(encrypted_acc_password));
+    const server_name = JSON.parse(decryptData(encrypted_server_name));
+    const type = JSON.parse(decryptData(encrypted_type));
+    const id = JSON.parse(decryptData(encrypted_id));
     const copier_data = await client.query("SELECT * FROM copiers WHERE account_id=$1", [
       acc_id,
     ]);
@@ -311,7 +339,8 @@ exports.addCopierAccount = async (req, res) => {
           WHERE id = 1`
         )
         if (req.user.balance < copier_plan_price.rows[0].price) {
-          await res.status(201).send("Your account balance is not sufficient. Please charge balance!");
+          const encryptedData = encryptWithSymmetricKey("Your account balance is not sufficient. Please charge balance!");
+          await res.status(201).send({ encrypted: encryptedData });
           return;
         }
         const myDate = new Date();
@@ -447,18 +476,22 @@ exports.addCopierAccount = async (req, res) => {
           io.to(id).emit("notification", messages.rows[0]);
         }
         const accounts = await getMyAllAccounts(myData.rows[0]);
-        await res.status(200).send({ user: myData.rows[0], accounts: accounts });
+        const encryptedData = encryptWithSymmetricKey({ user: myData.rows[0], accounts: accounts });
+        await res.status(200).send({ encrypted: encryptedData });
       }
       else {
-        await res.status(201).send("This account had already been registered as master!");
+        const encryptedData = encryptWithSymmetricKey("This account had already been registered as master!");
+        await res.status(201).send({ encrypted: encryptedData });
       }
     }
     else {
-      await res.status(201).send("This account had already been registered as copier!");
+      const encryptedData = encryptWithSymmetricKey("This account had already been registered as copier!");
+      await res.status(201).send({ encrypted: encryptedData });
     }
   }
   catch {
-    await res.status(501).send("Server Error");
+    const encryptedData = encryptWithSymmetricKey("Server Error");
+    await res.status(501).send({ encrypted: encryptedData });
   }
 }
 
@@ -467,21 +500,33 @@ exports.addCopierAccount = async (req, res) => {
 //Add Metatrader Master Account to our Platform Endpoint
 exports.addMetatraderMasterAccount = async (req, res) => {
   try {
+    const encryptData = req.body.encrypted;
+    console.log(encryptData)
     const {
       token,
-      acc_id,
-      acc_password,
-      acc_server_name,
-      acc_name,
-      host,
-      port,
-      type,
-      id,
-      profit_share,
+      encrypted_acc_id,
+      encrypted_acc_password,
+      encrypted_acc_server_name,
+      encrypted_acc_name,
+      encrypted_host,
+      encrypted_port,
+      encrypted_type,
+      encrypted_id,
+      encrypted_profit_share,
       description,
-      avatar,
-      index_level
-    } = req.body;
+      encrypted_index_level,
+      avatar
+    } = encryptData;
+    const acc_id = JSON.parse(decryptData(encrypted_acc_id));
+    const acc_password = JSON.parse(decryptData(encrypted_acc_password));
+    const acc_server_name = JSON.parse(decryptData(encrypted_acc_server_name));
+    const host = JSON.parse(decryptData(encrypted_host));
+    const id = JSON.parse(decryptData(encrypted_id));
+    const profit_share = JSON.parse(decryptData(encrypted_profit_share));
+    const index_level = JSON.parse(decryptData(encrypted_index_level));
+    const acc_name = JSON.parse(decryptData(encrypted_acc_name));
+    const port = JSON.parse(decryptData(encrypted_port));
+    const type = JSON.parse(decryptData(encrypted_type));
     const database_name = type === "mt5" ? "metatrader5_masters" : "metatrader_masters";
     const master_data = await client.query(
       `SELECT * 
@@ -511,7 +556,8 @@ exports.addMetatraderMasterAccount = async (req, res) => {
           ]
         );
         if (balance < level_limit.rows[0].plan_price) {
-          await res.status(201).send("Your account balance is not sufficient. Please charge balance!");
+          const encryptedResponse = encryptWithSymmetricKey("Your account balance is not sufficient. Please charge balance!");
+          await res.status(201).send({ encrypted: encryptedResponse });
           return;
         }
         const myDate = new Date();
@@ -639,36 +685,49 @@ exports.addMetatraderMasterAccount = async (req, res) => {
           io.to(id).emit("notification", messages.rows[0]);
         }
         const accounts = await getMyAllAccounts(user.rows[0]);
-        await res.status(200).send({ user: user.rows[0], accounts: accounts });
+        const encryptedData = encryptWithSymmetricKey({ user: user.rows[0], accounts: accounts })
+        await res.status(200).send({ encrypted: encryptedData });
       }
       else {
-        await res.status(201).send("This account had already been registered as copier!")
+        const encryptedData = encryptWithSymmetricKey("This account had already been registered as copier!");
+        await res.status(201).send({ encrypted: encryptedData })
       }
     }
     else {
-      await res.status(201).send("This account had already been registered as master!")
+      const encryptedData = encryptWithSymmetricKey("This account had already been registered as master!");
+      await res.status(201).send({ encrypted: encryptedData });
     }
   }
   catch {
-    await res.status(501).send("Server Error");
+    const encryptedData = encryptWithSymmetricKey("Server Error");
+    await res.status(501).send({ encrypted: encryptedData });
   }
 }
 
 //Add Metatrader Copier Account to our Platform Endpoint
 exports.addMetatraderCopierAccount = async (req, res) => {
-  try {
+  try {    
+    const encryptData = req.body.encrypted;
     const {
       token,
-      acc_id,
-      acc_password,
-      acc_server_name,
-      acc_name,
-      host,
-      port,
-      type,
-      id,
+      encrypted_acc_id,
+      encrypted_acc_password,
+      encrypted_acc_server_name,
+      encrypted_acc_name,
+      encrypted_host,
+      encrypted_port,
+      encrypted_type,
+      encrypted_id,
       avatar
-    } = req.body;
+    } = encryptData;
+    const acc_id = JSON.parse(decryptData(encrypted_acc_id));
+    const acc_password = JSON.parse(decryptData(encrypted_acc_password));
+    const acc_server_name = JSON.parse(decryptData(encrypted_acc_server_name));
+    const acc_name = JSON.parse(decryptData(encrypted_acc_name));
+    const host = JSON.parse(decryptData(encrypted_host));
+    const port = JSON.parse(decryptData(encrypted_port));
+    const type = JSON.parse(decryptData(encrypted_type));
+    const id = JSON.parse(decryptData(encrypted_id));
     const database_name = type === "mt5" ? "metatrader5_copiers" : "metatrader_copiers";
     const copier_data = await client.query(
       `SELECT * FROM ${database_name} 
@@ -692,7 +751,8 @@ exports.addMetatraderCopierAccount = async (req, res) => {
           WHERE id = 1`
         );
         if (req.user.balance < copier_plan_price.rows[0].price) {
-          await res.status(201).send("Your account balance is not sufficient. Please charge balance!");
+          const encryptedData = encryptWithSymmetricKey("Your account balance is not sufficient. Please charge balance!");
+          await res.status(201).send({ encrypted: encryptedData });
           return;
         }
         const myDate = new Date();
@@ -828,18 +888,22 @@ exports.addMetatraderCopierAccount = async (req, res) => {
           io.to(id).emit("notification", messages.rows[0]);
         }
         const accounts = await getMyAllAccounts(myData.rows[0]);
-        await res.status(200).send({ user: myData.rows[0], accounts: accounts });
+        const encryptedData = encryptWithSymmetricKey({ user: myData.rows[0], accounts: accounts });
+        await res.status(200).send({ encrypted: encryptedData });
       }
       else {
-        await res.status(201).send("This account had already been registered as master!");
+        const encryptedData = encryptWithSymmetricKey("This account had already been registered as master!");
+        await res.status(201).send({ encrypted: encryptedData });
       }
     }
     else {
-      await res.status(201).send("This account had already been registered as copier!");
+      const encryptedData = encryptWithSymmetricKey("This account had already been registered as copier!");
+      await res.status(201).send({ encrypted: encryptedData });
     }
   }
   catch {
-    await res.status(501).send("Server Error");
+    const encryptedData = encryptWithSymmetricKey("Server Error");
+    await res.status(501).send({ encrypted: encryptedData });
   }
 }
 
@@ -849,7 +913,8 @@ exports.addMetatraderCopierAccount = async (req, res) => {
 exports.getMastersList = async (req, res) => {
   try {
     const user = req.user;
-    const { acc_type, current_page, display_count } = req.body;
+    const decryptedData = decryptData(req.body.encrypted);
+    const { acc_type, current_page, display_count } = JSON.parse(decryptedData);
     const all_masters = await client.query(
       `SELECT total_pl_amount,
         avatar, 
@@ -958,7 +1023,8 @@ exports.getMastersList = async (req, res) => {
         return new Date(a.registered_at) - new Date(b.registered_at);
       });
       const slicedData = sortedData.slice(current_page * display_count, current_page * display_count + display_count);
-      await res.status(200).send({ accounts: slicedData, totalCount: sortedData.length });
+      const encryptedResponse = encryptWithSymmetricKey({ accounts: slicedData, totalCount: sortedData.length });
+      await res.status(200).send({ encrypted: encryptedResponse });
     }
     else if (acc_type === 1) {
       let index = 0;
@@ -994,7 +1060,8 @@ exports.getMastersList = async (req, res) => {
         return new Date(a.registered_at) - new Date(b.registered_at);
       });
       const slicedData = sortedData.slice(current_page * display_count, current_page * display_count + display_count);
-      await res.status(200).send({ accounts: slicedData, totalCount: index });
+      const encryptedResponse = encryptWithSymmetricKey({ accounts: slicedData, totalCount: index });
+      await res.status(200).send({ encrypted: encryptedResponse });
     }
     else if (acc_type === 2) {
       let index = 0;
@@ -1030,18 +1097,21 @@ exports.getMastersList = async (req, res) => {
         return new Date(a.registered_at) - new Date(b.registered_at);
       });
       const slicedData = sortedData.slice(current_page * display_count, current_page * display_count + display_count);
-      await res.status(200).send({ accounts: slicedData, totalCount: index });
+      const encryptResposne = encryptWithSymmetricKey({ accounts: slicedData, totalCount: index });
+      await res.status(200).send({ encrypted: encryptResposne });
     }
   }
   catch {
-    await res.status(501).send("Server Error");
+    const encryptedResponse = encryptWithSymmetricKey("Server Error!");
+    await res.status(501).send({ encrypted: encryptedResponse });
   }
 }
 
 //Add Master Account to user's followed list Endpoint
 exports.addFollowMasterAccount = async (req, res) => {
   try {
-    const { type, my_user_id, acc_id } = req.body;
+    const decryptedData = decryptData(req.body.encrypted);
+    const { type, my_user_id, acc_id } = JSON.parse(decryptedData);
     const new_follower = {
       type: type,
       account_id: acc_id
@@ -1055,18 +1125,21 @@ exports.addFollowMasterAccount = async (req, res) => {
       ]
     )
     if (updatedMyData.rowCount > 0) {
-      res.status(200).send("ok");
+      const encryptedResponse = encryptWithSymmetricKey("ok");
+      await res.status(200).send({ encrypted: encryptedResponse });
     }
   }
   catch {
-    res.status(501).send("Server Error!");
+    const encryptedResponse = encryptWithSymmetricKey("Server Error!");
+    await res.status(501).send({ encrypted: encryptedResponse });
   }
 }
 
 //Remove Master Account from user's followed list Endpoint
 exports.removeFollowMasterAccount = async (req, res) => {
   try {
-    const { type, my_user_id, acc_id } = req.body;
+    const decryptedData = decryptData(req.body.encrypted);
+    const { type, my_user_id, acc_id } = JSON.parse(decryptedData);
     const remove_account = {
       type: type,
       account_id: acc_id
@@ -1080,17 +1153,20 @@ exports.removeFollowMasterAccount = async (req, res) => {
       ]
     )
     if (updatedMyData.rowCount > 0) {
-      res.status(200).send("ok");
+      const encryptedResponse = encryptWithSymmetricKey("ok");
+      res.status(200).send({ encrypted: encryptedResponse });
     }
   }
   catch {
-    res.status(501).send("Server Error!");
+    const encryptedResponse = encryptWithSymmetricKey("Server Error!");
+    res.status(501).send({ encrypted: encryptedResponse });
   }
 }
 
 exports.upgradeMasterPlan = async (req, res) => {
   try {
-    const { type, acc_id, plan } = req.body;
+    const decryptedData = decryptData(req.body.encrypted);
+    const { type, acc_id, plan } = JSON.parse(decryptedData);
     const table_name = (type === "tld" || type === "tll") ? "masters" : type === "mt4" ? "metatrader_masters" : "metatrader5_masters";
     const prev_acc_level = await client.query(
       `SELECT payment_date,
@@ -1123,13 +1199,15 @@ exports.upgradeMasterPlan = async (req, res) => {
       const unit = 24 * 60 * 60 * 1000;
       const days = (timestamp / unit);
       if (days < 7) {
-        await res.status(202).send("You are permitted to upgrade only once per week.");
+        const encryptedResponse = encryptWithSymmetricKey("You are permitted to upgrade only once per week.");
+        await res.status(202).send({ encrypted: encryptedResponse });
         return;
       }
       const price = new_level_limit.rows[0].plan_price + ((days / 30) - 1) * prev_level_limit.rows[0].plan_price;
       const balance = req.user.balance;
       if (balance < price) {
-        await res.status(201).send("Insufficient balance to upgrade! Please charge balance to updagrade plan.");
+        const encryptedResponse = encryptWithSymmetricKey("Insufficient balance to upgrade! Please charge balance to updagrade plan.");
+        await res.status(201).send({ encrypted: encryptedResponse });
       }
       else {
         await client.query(
@@ -1195,15 +1273,18 @@ exports.upgradeMasterPlan = async (req, res) => {
           }
           io.to(req.user.id).emit("update_balance", data);
         }
-        await res.status(200).send("ok");
+        const encryptedResponse = encryptWithSymmetricKey("ok");
+        await res.status(200).send({ encrypted: encryptedResponse });
       }
     }
     else {
-      await res.status(202).send("Same plan!");
+      const encryptedResponse = encryptWithSymmetricKey("Same plan!");
+      await res.status(202).send({ encrypted: encryptedResponse });
     }
   }
   catch {
-    await res.status(501).send("Server Error!");
+    const encryptedResponse = encryptWithSymmetricKey("Server Error!");
+    await res.status(501).send({ encrypted: encryptedResponse });
   }
 }
 
@@ -1345,7 +1426,11 @@ const getCopierUsers = async (master_acc_id, master_acc_type) => {
 //Update Master Description
 exports.updateMasterDescription = async (req, res) => {
   try {
-    const { accountId, accountType, description, profitShare } = req.body;
+    const encryptedData = req.body.encrypted;
+    const { encrypted_accountId, encrypted_accountType, description, encrypted_profitShare } = encryptedData;
+    const accountId = JSON.parse(decryptData(encrypted_accountId));
+    const accountType = JSON.parse(decryptData(encrypted_accountType));
+    const profitShare = JSON.parse(decryptData(encrypted_profitShare));
     const table_name = (accountType === "tld" || accountType === "tll") ? "masters" : accountType === "mt4" ? "metatrader_masters" : "metatrader5_masters";
     const prev_data = await client.query(
       `SELECT profit_share,
@@ -1367,7 +1452,8 @@ exports.updateMasterDescription = async (req, res) => {
     console.log(prev_profit_share?.per_hour, profitShare?.per_hour);
     console.log(prev_description, description);
     if (prev_profit_share?.per_hour === profitShare?.per_hour && prev_description === description) {
-      await res.status(201).send("No changes!");
+      const encryptResponse = encryptWithSymmetricKey("No changes!");
+      await res.status(201).send({ encrypted: encryptResponse });
     }
     else {
       if ((unit < stamp) && (profitShare?.per_hour <= 0.1 || (profitShare?.per_hour > 0.1 && profitShare?.per_hour <= prev_profit_share?.per_hour * 1.1))) {
@@ -1437,23 +1523,27 @@ exports.updateMasterDescription = async (req, res) => {
               ]
             );
             if (socketUsers[copier.user_id]) io.to(copier.user_id).emit('notification', copierMessages.rows[0]);
-          })
-          await res.status(200).send("Successfully updated!");
+          });
+          const encryptedResponse = encryptWithSymmetricKey("Successfully updated!");
+          await res.status(200).send({ encrypted: encryptedResponse });
         }
       }
       else {
-        await res.status(201).send("Masters can change their prices once a week and can increase them by up to 10% at one time.")
+        const encryptedResponse = encryptWithSymmetricKey("Masters can change their prices once a week and can increase them by up to 10% at one time.");
+        await res.status(201).send({ encrypted: encryptedResponse })
       }
     }
   }
   catch {
-    await res.status(501).send("Server Error!");
+    const encryptedResponse = encryptWithSymmetricKey("Server Error!");
+    await res.status(501).send({ encrypted: encryptedResponse });
   }
 }
 
 exports.getMasterDescription = async (req, res) => {
   try {
-    const { accountId, accountType } = req.body;
+    const decryptedData = decryptData(req.body.encrypted);
+    const { accountId, accountType } = JSON.parse(decryptedData);
     const table_name = (accountType === "tld" || accountType === "tll") ? "masters" : accountType === "mt4" ? "metatrader_masters" : "metatrader5_masters";
     const data = await client.query(
       `SELECT about_me,
@@ -1465,20 +1555,24 @@ exports.getMasterDescription = async (req, res) => {
       ]
     );
     if (data.rowCount > 0) {
-      await res.status(200).send(data.rows[0]);
+      const encryptedResponse = encryptWithSymmetricKey(data.rows[0]);
+      await res.status(200).send({ encrypted: encryptedResponse });
     }
     else {
-      await res.status(201).send("Database Error!");
+      const encryptedResponse = encryptWithSymmetricKey("Database Error!");
+      await res.status(201).send({ encrypted: encryptedResponse });
     }
   }
   catch {
-    await res.status(501).send("Server Error!");
+    const encryptedResponse = encryptWithSymmetricKey("Server Error!");
+    await res.status(501).send({ encrypted: encryptedResponse });
   }
 }
 
 exports.getFollowCopiersList = async (req, res) => {
   try {
-    const { accountId, accountType } = req.body;
+    const decryptedData = decryptData(req.body.encrypted);
+    const { accountId, accountType } = JSON.parse(decryptedData);
     const data = await client.query(
       `SELECT * 
       FROM contract
@@ -1523,14 +1617,17 @@ exports.getFollowCopiersList = async (req, res) => {
         copierData.rows[0].total_pl = total_pl;
         temp.push(copierData.rows[0]);
       }
-      await res.status(200).send(temp);
+      const encryptResponse = encryptWithSymmetricKey(temp);
+      await res.status(200).send({ encrypted: encryptResponse });
     }
     else {
-      await res.status(200).send([]);
+      const encryptResponse = encryptWithSymmetricKey([]);
+      await res.status(200).send({ encrypted: encryptResponse });
     }
   }
   catch {
-    await res.status(501).send("Server Error!");
+    const encryptResponse = encryptWithSymmetricKey("Server Error!");
+    await res.status(501).send({ encrypted: encryptResponse });
   }
 }
 
@@ -1658,7 +1755,8 @@ const getMetatrader5CopiersList = async (copierIds) => {
 //Get Copier Account List Endpoint
 exports.getCopiersList = async (req, res) => {
   try {
-    const { user_id } = req.body;
+    const decryptedData = decryptData(req.body.encrypted);
+    const { user_id } = JSON.parse(decryptedData);
     const copier_data = await client.query(
       `SELECT copiers 
         FROM users
@@ -1673,7 +1771,8 @@ exports.getCopiersList = async (req, res) => {
       copier_acc_names = copier_acc_names.concat(metatraderCopiers);
       const metatrader5Copiers = await getMetatrader5CopiersList(copierIds);
       copier_acc_names = copier_acc_names.concat(metatrader5Copiers);
-      await res.status(200).send(copier_acc_names);
+      const encryptResponse = encryptWithSymmetricKey(copier_acc_names);
+      await res.status(200).send({ encrypted: encryptResponse });
     }
     else res.status(200).send([]);
   }
@@ -1747,7 +1846,9 @@ exports.startTradingFunc = async (copier_acc_id, copier_acc_type, master_acc_id,
 exports.startTrading = async (req, res) => {
   try {
     const balance = req.user.balance;
-    const { copier_acc_id, copier_acc_type, master_acc_id, my_master_type } = req.body;
+    const decryptedData = decryptData(req.body.encrypted);
+    const { copier_acc_id, copier_acc_type, master_acc_id, my_master_type } = JSON.parse(decryptedData);
+    console.log(copier_acc_id, copier_acc_type, master_acc_id, my_master_type)
     const master_table_name = (my_master_type === 'tld' || my_master_type === 'tll') ? 'masters' : my_master_type === "mt4" ? 'metatrader_masters' : 'metatrader5_masters';
     const master_acc = await client.query(
       `SELECT profit_share
@@ -1758,21 +1859,27 @@ exports.startTrading = async (req, res) => {
       ]
     );
     const value = parseFloat(master_acc.rows[0].profit_share?.per_hour);
-    if (value > balance) await res.status(201).send("Insufficient Balance!");
+    if (value > balance) {
+      const encryptedResponse = encryptWithSymmetricKey("Insufficient Balance");
+      await res.status(201).send({ encrypted: encryptedResponse });
+    }
     else {
       const success = await this.startTradingFunc(copier_acc_id, copier_acc_type, master_acc_id, my_master_type);
-      if (success) await res.status(200).send("ok");
+      const encryptedResponse = encryptWithSymmetricKey("ok")
+      if (success) await res.status(200).send({ encrypted: encryptedResponse });
     }
   }
   catch {
-    await res.status(501).send("Server Error!");
+    const encryptedResponse = encryptWithSymmetricKey("Server Error!");
+    await res.status(501).send({ encrypted: encryptedResponse });
   }
 }
 
 //Stop Trading Endpoint
 exports.stopTrading = async (req, res) => {
   try {
-    const { copier_acc_id, copier_acc_type, master_acc_id, my_master_type } = req.body;
+    const decryptedData = decryptData(req.body.encrypted);
+    const { copier_acc_id, copier_acc_type, master_acc_id, my_master_type } = JSON.parse(decryptedData);
     const contractData = await client.query(
       `UPDATE contract 
         SET status = 'Stopped' 
@@ -1787,7 +1894,10 @@ exports.stopTrading = async (req, res) => {
         my_master_type
       ]
     );
-    if (contractData.rowCount === 0) await res.status(201).send("No Contarct data");
+    if (contractData.rowCount === 0) {
+      const encryptedResponse = encryptWithSymmetricKey("No Contract data");
+      await res.status(201).send({ encrypted: encryptedResponse });
+    }
     const database_name = (copier_acc_type === 'tll' || copier_acc_type === 'tld') ? 'copiers' : copier_acc_type === 'mt4' ? 'metatrader_copiers' : 'metatrader5_copiers';
     if (contractData.rowCount > 0) {
       await client.query(
@@ -1796,18 +1906,21 @@ exports.stopTrading = async (req, res) => {
           WHERE account_id = '${copier_acc_id}'
           AND type = '${copier_acc_type}'`
       )
-      await res.status(200).send("ok");
+      const encryptedResponse = encryptWithSymmetricKey("ok");
+      await res.status(200).send({ encrypted: encryptedResponse });
     }
   }
   catch {
-    await res.status(501).send("Server Error!");
+    const encryptedResponse = encryptWithSymmetricKey("Server Error!");
+    await res.status(501).send({ encrypted: encryptedResponse });
   }
 }
 
 //Disconnect Copier from Master Endpoint
 exports.disconnectMaster = async (req, res) => {
   try {
-    const { copier_acc_id, copier_acc_type, master_acc_id, my_master_type } = req.body;
+    const decryptedData = decryptData(req.body.encrypted);
+    const { copier_acc_id, copier_acc_type, master_acc_id, my_master_type } = JSON.parse(decryptedData);
     console.log("Disconnect master", copier_acc_id, copier_acc_type, master_acc_id, my_master_type)
     const deleted_acc = await client.query(
       `DELETE FROM contract 
@@ -1822,7 +1935,10 @@ exports.disconnectMaster = async (req, res) => {
         my_master_type
       ]
     );
-    if (deleted_acc.rowCount === 0) await res.status(201).send("No Contarct data");
+    if (deleted_acc.rowCount === 0) {
+      const encryptedResponse = encryptWithSymmetricKey("No Contarct data");
+      await res.status(201).send({ encrypted: encryptedResponse });
+    }
     else {
       const database_name = (copier_acc_type === 'tll' || copier_acc_type === 'tld') ? 'copiers' : copier_acc_type === 'mt4' ? 'metatrader_copiers' : 'metatrader5_copiers';
       const updated_copier_acc = await client.query(
@@ -1853,12 +1969,14 @@ exports.disconnectMaster = async (req, res) => {
             []
           ]
         );
-        await res.status(200).send("ok");
+        const encryptedResponse = encryptWithSymmetricKey("ok");
+        await res.status(200).send({ encrypted: encryptedResponse });
       }
     }
   }
   catch {
-    await res.status(501).send("Server Error!");
+    const encryptedResponse = encryptWithSymmetricKey("Server Error!");
+    await res.status(501).send({ encrypted: encryptedResponse });
   }
 }
 
@@ -1867,7 +1985,8 @@ exports.disconnectMaster = async (req, res) => {
 //Add Master to Follow Master Endpoint
 exports.addMyMaster = async (req, res) => {
   try {
-    const { copier_acc_id, copier_type, master_acc_id, master_type, action_type } = req.body;
+    const decryptedData = decryptData(req.body.encrypted);
+    const { copier_acc_id, copier_type, master_acc_id, master_type, action_type } = JSON.parse(decryptedData);
     const master_table_name = (master_type === 'tld' || master_type === 'tll') ? 'masters' : master_type === "mt4" ? 'metatrader_masters' : 'metatrader5_masters';
     const copier_table_name = (copier_type === 'tld' || copier_type === 'tll') ? 'copiers' : copier_type === "mt4" ? 'metatrader_copiers' : 'metatrader5_copiers';
     const master_data = (master_type === 'tld' || master_type === 'tll') ? await client.query(
@@ -1952,10 +2071,13 @@ exports.addMyMaster = async (req, res) => {
             req.user.id
           ]
         );
-        if (updatedContract.rowCount > 0) await res.status(200).send("Your copier conection changed to another master.!");
+        const encryptResponse = encryptWithSymmetricKey({ message: "Your copier conection changed to another master.!" });
+        console.log(encryptResponse)
+        if (updatedContract.rowCount > 0) await res.status(200).send({ encrypted: encryptResponse });
       }
       else {
-        res.status(201).send("The master account you have selected cannot be connected with your copier account due to the current follower limit being reached at 5 accounts.");
+        const encryptResponse = encryptWithSymmetricKey({ message: "The master account you have selected cannot be connected with your copier account due to the current follower limit being reached at 5 accounts." })
+        res.status(201).send({ encrypted: encryptResponse });
       }
     }
     else if (action_type === "change") {
@@ -2010,10 +2132,12 @@ exports.addMyMaster = async (req, res) => {
             copier_type,
           ]
         );
-        await res.status(200).send("Your copier has been connected to your master. Now you can start copy trading!");
+        const encryptResponse = encryptWithSymmetricKey({ message: "Your copier has been connected to your master. Now you can start copy trading!" })
+        await res.status(200).send({ encrypted: encryptResponse });
       }
       else {
-        res.status(201).send(`The master account you have selected cannot be connected with your copier account due to the current follower limit being reached at ${limit_value} accounts.`);
+        const encryptResponse = encryptWithSymmetricKey({ message: `The master account you have selected cannot be connected with your copier account due to the current follower limit being reached at ${limit_value} accounts.` })
+        res.status(201).send({ encrypted: encryptResponse })
       }
     }
   }
@@ -2026,7 +2150,8 @@ exports.addMyMaster = async (req, res) => {
 
 exports.getCopierByAccountId = async (req, res) => {
   try {
-    const { accountId, accountType } = req.body;
+    const decryptedData = decryptData(req.body.encrypted);
+    const { accountId, accountType } = JSON.parse(decryptedData);
     const table_name = (accountType === 'tld' || accountType === 'tll') ? 'copiers' : accountType === "mt4" ? 'metatrader_copiers' : 'metatrader5_copiers';
     const data = await client.query(
       `SELECT account_id,
@@ -2065,11 +2190,17 @@ exports.getCopierByAccountId = async (req, res) => {
           copier_data.rows[0].master_acc_id,
         ]
       );
-      await res.status(200).send({ data: data.rows[0], profit_share: profit_share.rows[0].profit_share });
+      const responseData = {
+        data: data.rows[0],
+        profit_share: profit_share.rows[0].profit_share
+      }
+      const encryptedResponse = encryptWithSymmetricKey(responseData);
+      await res.status(200).send({ encrypted: encryptedResponse });
     }
   }
   catch {
-    res.status(501).send("Server Error!");
+    const encryptedResponse = encryptWithSymmetricKey("Server Error!")
+    res.status(501).send({ encrypted: encryptedResponse });
   }
 }
 
@@ -2227,36 +2358,43 @@ exports.updateCopierPositionSettings = async (req, res) => {
 exports.getTransactionHistory = async (req, res) => {
   try {
     const user = req.user;
-    const { current_page, display_count } = req.body;
+    const decryptedData = decryptData(req.body.encrypted);
+    const { current_page, display_count } = JSON.parse(decryptedData);
     const transactionHistory = user.transaction_history;
     const filetered_data = transactionHistory?.filter((history, index) => {
       if (index >= current_page * display_count && index < (current_page + 1) * display_count) return history;
-    })
-    res.status(200).send({ transactionHistory: filetered_data?.length ? filetered_data : [], transactionCount: transactionHistory?.length ? transactionHistory.length : 0 });
+    });
+    const encryptedResponse = encryptWithSymmetricKey({ transactionHistory: filetered_data?.length ? filetered_data : [], transactionCount: transactionHistory?.length ? transactionHistory.length : 0 });
+    res.status(200).send({ encrypted: encryptedResponse });
   }
   catch {
-    res.status(501).send("failed");
+    const encryptedResponse = encryptWithSymmetricKey("failed");
+    res.status(501).send({ encrypted: encryptedResponse });
   }
 }
 
 exports.getTradingHistory = async (req, res) => {
   try {
     const user = req.user;
-    const { current_page, display_count } = req.body;
+    const decryptedData = decryptData(req.body.encrypted);
+    const { current_page, display_count } = JSON.parse(decryptedData);
     const tradingHistory = user.trading_history;
     const filtered_data = tradingHistory?.filter((history, index) => {
       if (index >= current_page * display_count && index < (current_page + 1) * display_count) return history;
     });
-    res.status(200).send({ tradingHistory: filtered_data?.length ? filtered_data : [], tradingCount: tradingHistory?.length ? tradingHistory.length : 0 })
+    const encryptedResponse = encryptWithSymmetricKey({ tradingHistory: filtered_data?.length ? filtered_data : [], tradingCount: tradingHistory?.length ? tradingHistory.length : 0 });
+    res.status(200).send({ encrypted: encryptedResponse });
   }
   catch {
-    await res.status(501).send("failed");
+    const encryptedResponse = encryptWithSymmetricKey("failed");
+    await res.status(501).send({ encrypted: encryptedResponse });
   }
 }
 
 exports.getCopierTradingHistory = async (req, res) => {
   try {
-    const { current_page, display_count, copier_acc_id, copier_acc_type } = req.body;
+    const decryptedData = decryptData(req.body.encrypted);
+    const { current_page, display_count, copier_acc_id, copier_acc_type } = JSON.parse(decryptedData);
     console.log(current_page, display_count, copier_acc_id, copier_acc_type)
     const contract = await client.query(
       `SELECT pay_history
@@ -2273,8 +2411,8 @@ exports.getCopierTradingHistory = async (req, res) => {
     const filtered_data = tradingHistory?.filter((history, index) => {
       if (index >= current_page * display_count && index < (current_page + 1) * display_count) return history;
     });
-    console.log(filtered_data)
-    res.status(200).send({ tradingHistory: filtered_data?.length ? filtered_data : [], tradingCount: tradingHistory?.length ? tradingHistory.length : 0 })
+    const encryptedData = encryptWithSymmetricKey({ tradingHistory: filtered_data?.length ? filtered_data : [], tradingCount: tradingHistory?.length ? tradingHistory.length : 0 });
+    res.status(200).send({ encrypted: encryptedData })
   }
   catch {
     await res.status(501).send("failed");

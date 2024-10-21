@@ -2,7 +2,7 @@ const axios = require('axios');
 const Base64 = require('js-base64').Base64;
 const crypto = require('crypto');
 const client = require("../config/db/db.js");
-const { decryptValue } = require("../config/helper.js");
+const { decryptData, encryptWithSymmetricKey } = require("../config/utils/encryptFunction.js");
 
 const API_URL = process.env.CRYPTOCHILL_API_URL;
 const API_KEY = process.env.CRYPTOCHILL_API_KEY;
@@ -41,7 +41,8 @@ function cryptochill_api_request(endpoint, payload = {}, method = 'GET') {
 //pay to our platform
 
 exports.payCrypto = async (req, res) => {
-  const { type, amount } = req.body;
+  const decryptedData = decryptData(req.body.encrypted);
+  const { type, amount } = JSON.parse(decryptedData);
   var payload = {
     "amount": amount,
     "currency": "USD",
@@ -53,58 +54,80 @@ exports.payCrypto = async (req, res) => {
   }
   await cryptochill_api_request('invoices', payload, 'POST').then(function async(response) {
     console.log(response.data.result);
-    res.status(200).send(response.data.result.id);
+    const encryptResponse = encryptWithSymmetricKey(response.data.result.id);
+    res.status(200).send({ encrypted: encryptResponse });
   }).catch(function (error) {
     console.log(error);
-    if (error?.response) res.status(501).send("Network Connection Error.");
-    else res.status(501).send("Creating Invoice Failed.");
+    if (error?.response) {
+      const encryptedResponse = encryptWithSymmetricKey("Network Connection Error.");
+      res.status(501).send({ encrypted: encryptedResponse });
+    }
+    else {
+      const encryptedResponse = encryptWithSymmetricKey("Creating Invoice Failed.");
+      res.status(501).send({ encrypted: encryptedResponse });
+    }
   });
 }
 
 //withdraw from the platform
 
 exports.withdrawCrypto = async (req, res) => {
-  const { type, amount, address } = req.body;
-  console.log(amount, address);
-  if (amount > req.user.balance) {
-    res.status(201).send("Insufficient balance");
-    return;
-  }
-  const new_date = new Date();
-  var payload = {
-    "profile_id": PROFILE_ID,
-    "kind": type,
-    "passthrough": JSON.stringify({
-      "user_id": req.user.id,
-      "created_at": new_date.toISOString()
-    }),
-    "network_fee_preset": "economy",
-    "network_fee_pays": "merchant",
-    "recipients": [
-      {
-        "amount": amount,
-        "currency": "USD",
-        "address": address,
-        "notes": "Withdraw " + amount
-      }
-    ]
-  }
+  try {
+    const decryptedData = decryptData(req.body.encrypted);
+    const { type, amount, address } = JSON.parse(decryptedData);
+    if (amount > req.user.balance) {
+      const encryptedResponse = encryptWithSymmetricKey("Insufficient balance");
+      res.status(201).send({ encrypted: encryptedResponse });
+      return;
+    }
+    const new_date = new Date();
+    var payload = {
+      "profile_id": PROFILE_ID,
+      "kind": type,
+      "passthrough": JSON.stringify({
+        "user_id": req.user.id,
+        "created_at": new_date.toISOString()
+      }),
+      "network_fee_preset": "economy",
+      "network_fee_pays": "merchant",
+      "recipients": [
+        {
+          "amount": amount,
+          "currency": "USD",
+          "address": address,
+          "notes": "Withdraw " + amount
+        }
+      ]
+    }
 
-  cryptochill_api_request('payouts', payload, 'POST').then(function (response) {
-    if (response.statusText === "Created") res.status(200).send("ok");
-    else res.status(202).send("Withdraw Failed.");
-  }).catch(function (error) {
-    if (error.response.data.reason === "PayoutNetworkFeeTooHigh" || error.response.data.reason === "InvalidAddress") {
-      res.status(501).send(error.response.data.message);
-    }
-    else if (error.response.data.reason === "InsufficientFunds") {
-      res.status(501).send("Insufficient funds for this currency. Please use other currency.");
-    }
-    else {
-      console.log(error.response.data)
-      res.status(501).send("Withdraw Failed.");
-    }
-  });
+    cryptochill_api_request('payouts', payload, 'POST').then(function (response) {
+      if (response.statusText === "Created") {
+        const encryptedResponse = encryptWithSymmetricKey("ok");
+        res.status(200).send(encryptedResponse);
+      }
+      else {
+        const encryptedResponse = encryptWithSymmetricKey("Withdraw Failed.");
+        res.status(202).send({ encrypted: encryptedResponse });
+      }
+    }).catch(function (error) {
+      if (error.response.data.reason === "PayoutNetworkFeeTooHigh" || error.response.data.reason === "InvalidAddress") {
+        const encryptedResponse = encryptWithSymmetricKey(error.response.data.reason);
+        res.status(501).send({ encrypted: encryptedResponse });
+      }
+      else if (error.response.data.reason === "InsufficientFunds") {
+        const encryptedResponse = encryptWithSymmetricKey("Insufficient funds for this currency. Please use other currency.");
+        res.status(501).send({ encrypted: encryptedResponse });
+      }
+      else {
+        const encryptedResponse = encryptWithSymmetricKey("Withdraw Failed.");
+        res.status(501).send({ encrypted: encryptedResponse });
+      }
+    });
+  }
+  catch {
+    const encryptedResponse = encryptWithSymmetricKey("Withdraw Failed");
+    await res.status(501).send({ encrypted: encryptedResponse });
+  }
 }
 
 //CryptoChill Callback Function

@@ -3,6 +3,7 @@ const crypto = require("crypto");
 const client = require("../config/db/db.js");
 const getToken = require("../config/utils/getToken.js");
 const { emailExists, firstUser } = require("../config/helper.js");
+const { decryptData, encryptWithSymmetricKey } = require("../config/utils/encryptFunction.js");
 const jwt = require("jsonwebtoken");
 const emailjs = require('@emailjs/nodejs');
 const config = require("../config/config.js");
@@ -510,7 +511,8 @@ exports.getUserData = async (req, res) => {
 //Get Account Information From Database Endpoint
 exports.getAccountData = async (req, res) => {
   try {
-    const { type, account_id, role, days } = req.body;
+    const decryptedData = decryptData(req.body.encrypted);
+    const { type, account_id, role, days } = JSON.parse(decryptedData);
     const count = days === 1 ? 24 : days;
     const interval = days === 1 ? 1 : 24;
     if (role === "Master") {
@@ -581,7 +583,7 @@ exports.getAccountData = async (req, res) => {
         if (daysAgo === masterAcc.rows[0].registered_at) break;
         // if (i < 0) break;
       }
-      await res.status(200).send({
+      const responseData = {
         data: masterAcc.rows[0],
         total_pl: total_pl,
         last_trade_at: last_trade_at,
@@ -592,7 +594,9 @@ exports.getAccountData = async (req, res) => {
         minVal: minVal,
         plMaxVal: Math.max(plMaxVal, 5),
         plMinVal: Math.min(plMinVal, -5)
-      });
+      }
+      const encryptedResponse = encryptWithSymmetricKey(responseData);
+      await res.status(200).send({ encrypted: encryptedResponse });
     }
     else {
       const table_name = (type === "tld" || type === "tll") ? "copiers" : type === "mt4" ? "metatrader_copiers" : "metatrader5_copiers";
@@ -661,7 +665,7 @@ exports.getAccountData = async (req, res) => {
         daysAgo = copierAcc.rows[0].registered_at;
         // if (i < 0) break;
       }
-      await res.status(200).send({
+      const responseData = {
         data: copierAcc.rows[0],
         pl: process_pl.reverse(),
         total_pl: total_pl,
@@ -670,18 +674,22 @@ exports.getAccountData = async (req, res) => {
         minVal: minVal,
         plMaxVal: Math.max(plMaxVal, 5),
         plMinVal: Math.min(plMinVal, -5)
-      });
+      }
+      const encryptedResponse = encryptWithSymmetricKey(responseData);
+      await res.status(200).send({ encrypted: encryptedResponse });
     }
   }
   catch {
-    await res.status(501).send("Getting Account Data Failed!");
+    const encryptedResponse = encryptWithSymmetricKey("Getting Account Data Failed!");
+    await res.status(501).send({ encrypted: encryptedResponse });
   }
 }
 
 //Upload Profile Endpoint
 exports.uploadProfile = async (req, res) => {
   try {
-    const { avatarURL, userInfo } = req.body;
+    const { avatarURL, encrypted_userInfo } = req.body;
+    const userInfo = JSON.parse(decryptData(encrypted_userInfo));
     const updatedData = await client.query(
       `UPDATE users 
         SET avatar = $1,
@@ -771,35 +779,16 @@ exports.uploadProfile = async (req, res) => {
 //Dashboard Balance Update Endpoint
 exports.updateBalance = async (req, res) => {
   try {
-    // let balance = 0;
-    // req.user.transaction_history?.map((history) => {
-    //   const amount = history.amount;
-    //   const status = history.status;
-    //   const type = history.type;    
-    //   if (status === 'pending') return;
-    //   if (type === "Charge") balance += amount;
-    //   if (type === "Withdraw" || type === "Subscription") balance -= amount;
-    //   console.log(balance, amount)  
-    // });
-
-    // await client.query(
-    //   `UPDATE users
-    //   SET balance = $1
-    //   WHERE id = $2`,
-    //   [
-    //     balance > 0 ? balance : 0,
-    //     req.user.id
-    //   ]
-    // );
+    const user_id = req.user.id
     const balance = await client.query(
       `SELECT balance FROM users
       WHERE id = $1`,
       [
-        req.user.id
+        user_id
       ]
-    )
-    await res.status(200).send({ balance: balance.rows[0].balance > 0 ? balance.rows[0].balance : 0 });
-    // await res.status(200).send({ balance: balance > 0 ? balance : 0 })
+    );
+    const encryptResponse = encryptWithSymmetricKey({ balance: balance.rows[0].balance > 0 ? balance.rows[0].balance : 0 });
+    await res.status(200).send({ encrypted: encryptResponse });
   }
   catch {
     await res.status(501).send("failed");
