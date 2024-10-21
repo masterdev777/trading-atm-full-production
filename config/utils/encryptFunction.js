@@ -8,7 +8,8 @@ const decryptData = (encrypted) => {
   try {
     return crypto.privateDecrypt({
       key: privateKey,
-      padding: crypto.constants.RSA_PKCS1_PADDING, 
+      padding: crypto.constants.RSA_OAEP_PADDING,
+      oaepHash: 'sha256' 
     }, Buffer.from(encrypted, 'base64')).toString('utf8');
   } catch (error) {
     console.error("Decryption error:", error);
