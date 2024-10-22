@@ -108,6 +108,7 @@ exports.addMasterAccount = async (req, res) => {
       encrypted_server_name,
       encrypted_type,
       encrypted_id,
+      encrypted_is_profit_share,
       encrypted_profit_share,
       description,
       avatar,
@@ -122,6 +123,7 @@ exports.addMasterAccount = async (req, res) => {
     const server_name = JSON.parse(decryptData(encrypted_server_name));
     const type = JSON.parse(decryptData(encrypted_type));
     const id = JSON.parse(decryptData(encrypted_id));
+    const is_profit_share = JSON.parse(decryptData(encrypted_is_profit_share));
     const profit_share = JSON.parse(decryptData(encrypted_profit_share));
     const index_level = JSON.parse(decryptData(encrypted_index_level));
     const master_data = await client.query("SELECT * FROM masters WHERE account_id=$1", [
@@ -189,6 +191,7 @@ exports.addMasterAccount = async (req, res) => {
             history_positions, 
             take_stop, 
             total_pl_amount,
+            is_profit_share,
             profit_share,
             about_me,
             roi,
@@ -199,7 +202,7 @@ exports.addMasterAccount = async (req, res) => {
             payment_date,
             permission,
             user_id) 
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30) 
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31) 
             RETURNING *`,
           [
             formattedDate,
@@ -222,6 +225,7 @@ exports.addMasterAccount = async (req, res) => {
             [],
             [],
             0,
+            is_profit_share,
             profit_share,
             description,
             0,
@@ -512,6 +516,7 @@ exports.addMetatraderMasterAccount = async (req, res) => {
       encrypted_port,
       encrypted_type,
       encrypted_id,
+      encrypted_is_profit_share,
       encrypted_profit_share,
       description,
       encrypted_index_level,
@@ -522,6 +527,7 @@ exports.addMetatraderMasterAccount = async (req, res) => {
     const acc_server_name = JSON.parse(decryptData(encrypted_acc_server_name));
     const host = JSON.parse(decryptData(encrypted_host));
     const id = JSON.parse(decryptData(encrypted_id));
+    const is_profit_share = JSON.parse(decryptData(encrypted_is_profit_share));
     const profit_share = JSON.parse(decryptData(encrypted_profit_share));
     const index_level = JSON.parse(decryptData(encrypted_index_level));
     const acc_name = JSON.parse(decryptData(encrypted_acc_name));
@@ -598,6 +604,7 @@ exports.addMetatraderMasterAccount = async (req, res) => {
             lose_count, 
             history_orders, 
             master_pl,
+            is_profit_share,
             profit_share,
             about_me,
             roi,
@@ -608,7 +615,7 @@ exports.addMetatraderMasterAccount = async (req, res) => {
             payment_date,
             permission,
             user_id) 
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28) 
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29) 
             RETURNING *`,
           [
             formattedDate,
@@ -629,6 +636,7 @@ exports.addMetatraderMasterAccount = async (req, res) => {
             0,
             [],
             [],
+            is_profit_share,
             profit_share,
             description,
             0,
@@ -706,7 +714,7 @@ exports.addMetatraderMasterAccount = async (req, res) => {
 
 //Add Metatrader Copier Account to our Platform Endpoint
 exports.addMetatraderCopierAccount = async (req, res) => {
-  try {    
+  try {
     const encryptData = req.body.encrypted;
     const {
       token,
@@ -926,7 +934,8 @@ exports.getMastersList = async (req, res) => {
         lose_count, 
         registered_at,
         level,
-        profit_share 
+        profit_share,
+        is_profit_share 
         FROM masters`
     );
     const all_metatrader_masters = await client.query(
@@ -940,7 +949,8 @@ exports.getMastersList = async (req, res) => {
         lose_count, 
         registered_at,
         level,
-        profit_share
+        profit_share,
+        is_profit_share
         FROM metatrader_masters`
     );
     const all_metatrader5_masters = await client.query(
@@ -954,7 +964,8 @@ exports.getMastersList = async (req, res) => {
         lose_count, 
         registered_at,
         level,
-        profit_share
+        profit_share,
+        is_profit_share
         FROM metatrader5_masters`
     );
     if (acc_type === 0) {
@@ -970,7 +981,8 @@ exports.getMastersList = async (req, res) => {
           lose_count, 
           registered_at,
           level,
-          profit_share
+          profit_share,
+          is_profit_share
           FROM masters`
       );
       for (let i = 0; i < display_masters.rows.length; i++) {
@@ -990,7 +1002,8 @@ exports.getMastersList = async (req, res) => {
           lose_count, 
           registered_at,
           level,
-          profit_share 
+          profit_share,
+          is_profit_share
           FROM metatrader_masters`
       );
       for (let i = 0; i < display_metatrader_masters.rows.length; i++) {
@@ -1010,7 +1023,8 @@ exports.getMastersList = async (req, res) => {
           lose_count, 
           registered_at,
           level,
-          profit_share
+          profit_share,
+          is_profit_share
           FROM metatrader5_masters`
       );
       for (let i = 0; i < display_metatrader5_masters.rows.length; i++) {
@@ -1292,7 +1306,7 @@ exports.upgradeMasterPlan = async (req, res) => {
 //get Master By Account id
 exports.getMasterByAccountId = async (req, res) => {
   try {
-    const { accountId, accountType } = req.body;
+    const { accountId, accountType } = JSON.parse(decryptData(req.body.encrypted));
     const user = req.user;
     const table_name = (accountType === "tld" || accountType === "tll") ? "masters" : accountType === "mt4" ? "metatrader_masters" : "metatrader5_masters";
     const data = await client.query(
@@ -1314,21 +1328,26 @@ exports.getMasterByAccountId = async (req, res) => {
       const one = user?.follow_account?.find(item => item.account_id === accountId && item.type === accountType);
       if (one) data.rows[0].favorite = true;
       else data.rows[0].favorite = false;
-      res.status(200).send(data.rows[0]);
+      const encryptedResponse = encryptWithSymmetricKey(data.rows[0]);
+      await res.status(200).send({ encrypted: encryptedResponse });
     }
     else {
-      res.status(201).send("Database Error!");
+      const encryptedResponse = encryptWithSymmetricKey("Database Error!");
+      await res.status(201).send({ encrypted: encryptedResponse });
     }
   }
   catch {
-    res.status(501).send("Sever Error!");
+    const encryptedResponse = encryptWithSymmetricKey("Sever Error!");
+    await res.status(501).send({ encrypted: encryptedResponse });
   }
 }
 
 //Upload Master Avatar
 exports.uploadAvatar = async (req, res) => {
   try {
-    const { accountId, type, avatar } = req.body;
+    const { encrypted_accountId, encrypted_type, avatar } = req.body;
+    const accountId = JSON.parse(decryptData(encrypted_accountId));
+    const type = JSON.parse(decryptData(encrypted_type));
     const table_name = (type === "tld" || type === "tll") ? "masters" : type === "mt4" ? "metatrader_masters" : "metatrader5_masters";
     await client.query(
       `UPDATE ${table_name}
@@ -1339,10 +1358,12 @@ exports.uploadAvatar = async (req, res) => {
         accountId
       ]
     );
-    await res.status(200).send("ok");
+    const encryptedResponse = encryptWithSymmetricKey("ok");
+    await res.status(200).send({ encrypted: encryptedResponse });
   }
   catch {
-    await res.status(501).send("Server Error!");
+    const encryptedResponse = encryptWithSymmetricKey("Server Error!");
+    await res.status(501).send({ encrypted: encryptedResponse });
   }
 }
 
@@ -1350,7 +1371,7 @@ exports.uploadAvatar = async (req, res) => {
 
 exports.deleteAvatar = async (req, res) => {
   try {
-    const { accountId, type } = req.body;
+    const { accountId, type } = JSON.parse(decryptData(req.body.encrypted));
     const table_name = (type === "tld" || type === "tll") ? "masters" : type === "mt4" ? "metatrader_masters" : "metatrader5_masters";
     await client.query(
       `UPDATE ${table_name}
@@ -1427,13 +1448,15 @@ const getCopierUsers = async (master_acc_id, master_acc_type) => {
 exports.updateMasterDescription = async (req, res) => {
   try {
     const encryptedData = req.body.encrypted;
-    const { encrypted_accountId, encrypted_accountType, description, encrypted_profitShare } = encryptedData;
+    const { encrypted_accountId, encrypted_accountType, description, encrypted_is_profit_share, encrypted_profitShare } = encryptedData;
     const accountId = JSON.parse(decryptData(encrypted_accountId));
     const accountType = JSON.parse(decryptData(encrypted_accountType));
+    const is_profit_share = JSON.parse(decryptData(encrypted_is_profit_share));
     const profitShare = JSON.parse(decryptData(encrypted_profitShare));
     const table_name = (accountType === "tld" || accountType === "tll") ? "masters" : accountType === "mt4" ? "metatrader_masters" : "metatrader5_masters";
     const prev_data = await client.query(
-      `SELECT profit_share,
+      `SELECT is_profit_share,
+      profit_share,
       about_me,
       profit_share_update_date
       FROM ${table_name}
@@ -1442,6 +1465,7 @@ exports.updateMasterDescription = async (req, res) => {
         accountId
       ]
     );
+    const prev_is_profit_share = prev_data.rows[0].is_profit_share;
     const prev_profit_share = prev_data.rows[0].profit_share;
     const prev_description = prev_data.rows[0].about_me;
     const prev_profit_share_update_date = prev_data.rows[0].profit_share_update_date;
@@ -1451,86 +1475,105 @@ exports.updateMasterDescription = async (req, res) => {
     const stamp = myDate - prev_profit_share_update_date;
     console.log(prev_profit_share?.per_hour, profitShare?.per_hour);
     console.log(prev_description, description);
-    if (prev_profit_share?.per_hour === profitShare?.per_hour && prev_description === description) {
+    if (prev_is_profit_share === is_profit_share && prev_profit_share?.per_hour === profitShare?.per_hour && prev_description === description) {
       const encryptResponse = encryptWithSymmetricKey("No changes!");
       await res.status(201).send({ encrypted: encryptResponse });
     }
     else {
-      if ((unit < stamp) && (profitShare?.per_hour <= 0.1 || (profitShare?.per_hour > 0.1 && profitShare?.per_hour <= prev_profit_share?.per_hour * 1.1))) {
-        const updated_data = await client.query(
-          `UPDATE ${table_name}
-          SET about_me = $1,
-          profit_share = $2,
-          profit_share_update_date = $3
-          WHERE account_id = $4
-          RETURNING user_id, account_id, type, account_name`,
-          [
-            description,
-            profitShare,
-            formattedDate,
-            accountId
-          ]
-        );
-        if (updated_data.rowCount > 0) {
-          const myDate = new Date();
-          const formattedDate = myDate.toISOString();
-          const secret_name = JSON.stringify({
-            time: moment(formattedDate).format('YYYY/MM/DD hh:mm:ss A'),
-            type: "change_hourly_pay_amount",
-            user_id: updated_data.rows[0].user_id,
-            to: "master"
-          });
-          const uniqueId = uuidv5(secret_name, MY_NAMESPACE);
-          const messages = await client.query(
-            `INSERT INTO notifications
-              (id, receiver_id, message, read, time, type)
-              VALUES ($1, $2, $3, $4, $5, $6)
-              RETURNING *`,
+      if (is_profit_share === 0) {
+        if ((unit < stamp) && (profitShare?.per_hour <= 0.1 || (profitShare?.per_hour > 0.1 && profitShare?.per_hour <= prev_profit_share?.per_hour * 1.1))) {
+          const updated_data = await client.query(
+            `UPDATE ${table_name}
+            SET about_me = $1,
+            is_profit_share = $2,
+            profit_share = $3,
+            profit_share_update_date = $4
+            WHERE account_id = $5
+            RETURNING user_id, account_id, type, account_name`,
             [
-              uniqueId,
-              updated_data.rows[0].user_id,
-              "You've changed hourly pay amount of Master Account " + updated_data.rows[0].account_name + " from" + prev_profit_share?.per_hour + " to " + profitShare?.per_hour + " at " + moment(formattedDate).format('YYYY/MM/DD hh:mm:ss A'),
-              false,
+              description,
+              is_profit_share,
+              profitShare,
               formattedDate,
-              "change_hourly_pay_amount"
+              accountId
             ]
           );
-          const { copier_users } = await getCopierUsers(updated_data.rows[0].account_id, updated_data.rows[0].type);
-          const io = getSocketInstance();
-          if (socketUsers[updated_data.rows[0].user_id]) io.to(updated_data.rows[0].user_id).emit('notification', messages.rows[0]);
-          copier_users?.map(async (copier, index) => {
-            console.log(copier.user_id, socketUsers[copier.user_id]);
-            const copier_secret_name = JSON.stringify({
+          if (updated_data.rowCount > 0) {
+            const myDate = new Date();
+            const formattedDate = myDate.toISOString();
+            const secret_name = JSON.stringify({
               time: moment(formattedDate).format('YYYY/MM/DD hh:mm:ss A'),
               type: "change_hourly_pay_amount",
-              user_id: copier.user_id,
-              to: "master",
-              user_number: index
+              user_id: updated_data.rows[0].user_id,
+              to: "master"
             });
-            const copierUniqueId = uuidv5(copier_secret_name, MY_NAMESPACE);
-            const copierMessages = await client.query(
+            const uniqueId = uuidv5(secret_name, MY_NAMESPACE);
+            const messages = await client.query(
               `INSERT INTO notifications
-              (id, receiver_id, message, read, time, type)
-              VALUES ($1, $2, $3, $4, $5, $6)
-              RETURNING *`,
+                (id, receiver_id, message, read, time, type)
+                VALUES ($1, $2, $3, $4, $5, $6)
+                RETURNING *`,
               [
-                copierUniqueId,
-                copier.user_id,
-                "Hourly pay amount of Master Account " + updated_data.rows[0].account_name + " has been changed " + "from " + prev_profit_share?.per_hour + " to " + profitShare?.per_hour + " at " + moment(formattedDate).format('YYYY/MM/DD hh:mm:ss A'),
+                uniqueId,
+                updated_data.rows[0].user_id,
+                "You've changed hourly pay amount of Master Account " + updated_data.rows[0].account_name + " from" + prev_profit_share?.per_hour + " to " + profitShare?.per_hour + " at " + moment(formattedDate).format('YYYY/MM/DD hh:mm:ss A'),
                 false,
                 formattedDate,
                 "change_hourly_pay_amount"
               ]
             );
-            if (socketUsers[copier.user_id]) io.to(copier.user_id).emit('notification', copierMessages.rows[0]);
-          });
-          const encryptedResponse = encryptWithSymmetricKey("Successfully updated!");
-          await res.status(200).send({ encrypted: encryptedResponse });
+            const { copier_users } = await getCopierUsers(updated_data.rows[0].account_id, updated_data.rows[0].type);
+            const io = getSocketInstance();
+            if (socketUsers[updated_data.rows[0].user_id]) io.to(updated_data.rows[0].user_id).emit('notification', messages.rows[0]);
+            copier_users?.map(async (copier, index) => {
+              console.log(copier.user_id, socketUsers[copier.user_id]);
+              const copier_secret_name = JSON.stringify({
+                time: moment(formattedDate).format('YYYY/MM/DD hh:mm:ss A'),
+                type: "change_hourly_pay_amount",
+                user_id: copier.user_id,
+                to: "master",
+                user_number: index
+              });
+              const copierUniqueId = uuidv5(copier_secret_name, MY_NAMESPACE);
+              const copierMessages = await client.query(
+                `INSERT INTO notifications
+                (id, receiver_id, message, read, time, type)
+                VALUES ($1, $2, $3, $4, $5, $6)
+                RETURNING *`,
+                [
+                  copierUniqueId,
+                  copier.user_id,
+                  "Hourly pay amount of Master Account " + updated_data.rows[0].account_name + " has been changed " + "from " + prev_profit_share?.per_hour + " to " + profitShare?.per_hour + " at " + moment(formattedDate).format('YYYY/MM/DD hh:mm:ss A'),
+                  false,
+                  formattedDate,
+                  "change_hourly_pay_amount"
+                ]
+              );
+              if (socketUsers[copier.user_id]) io.to(copier.user_id).emit('notification', copierMessages.rows[0]);
+            });
+            const encryptedResponse = encryptWithSymmetricKey("Successfully updated!");
+            await res.status(200).send({ encrypted: encryptedResponse });
+          }
+        }
+        else {
+          const encryptedResponse = encryptWithSymmetricKey("Masters can change their prices once a week and can increase them by up to 10% at one time if the price exceeds 0.1.");
+          await res.status(201).send({ encrypted: encryptedResponse })
         }
       }
       else {
-        const encryptedResponse = encryptWithSymmetricKey("Masters can change their prices once a week and can increase them by up to 10% at one time.");
-        await res.status(201).send({ encrypted: encryptedResponse })
+        await client.query(
+          `UPDATE ${table_name}
+          SET about_me = $1,
+          is_profit_share = $2
+          WHERE account_id = $3`,
+          [
+            description,
+            is_profit_share,
+            accountId
+          ]
+        );
+        const encryptedResponse = encryptWithSymmetricKey("Successfully updated!");
+        await res.status(200).send({ encrypted: encryptedResponse });
       }
     }
   }
@@ -1546,7 +1589,8 @@ exports.getMasterDescription = async (req, res) => {
     const { accountId, accountType } = JSON.parse(decryptedData);
     const table_name = (accountType === "tld" || accountType === "tll") ? "masters" : accountType === "mt4" ? "metatrader_masters" : "metatrader5_masters";
     const data = await client.query(
-      `SELECT about_me,
+      `SELECT is_profit_share,
+      about_me,
       profit_share
       FROM ${table_name}
       WHERE account_id = $1`,
