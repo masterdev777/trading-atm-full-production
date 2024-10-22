@@ -21,6 +21,7 @@ module.exports = () => {
             },
             async (email, password, done) => {
                 try {
+                    console.log(email, password);
                     const user = await emailExists(email);
                     if (!user) return done(null, false);
                     const isMatch = await matchPassword(password, user.password);

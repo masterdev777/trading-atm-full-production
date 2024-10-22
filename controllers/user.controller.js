@@ -657,7 +657,6 @@ exports.getAccountData = async (req, res) => {
           balance: balance
         });
         total_pl += day_pl;
-        console.log(day_pl)
         if (maxVal < balance) maxVal = balance;
         if (minVal > balance) minVal = balance;
         if (plMaxVal < day_pl) plMaxVal = day_pl;
@@ -670,6 +669,8 @@ exports.getAccountData = async (req, res) => {
         pl: process_pl.reverse(),
         total_pl: total_pl,
         last_trade_at: last_trade_at,
+        win_count: win_count,
+        lose_count: lose_count,
         maxVal: Math.max(maxVal, 5),
         minVal: minVal,
         plMaxVal: Math.max(plMaxVal, 5),
@@ -779,7 +780,7 @@ exports.uploadProfile = async (req, res) => {
 //Dashboard Balance Update Endpoint
 exports.updateBalance = async (req, res) => {
   try {
-    const user_id = req.user.id
+    const user_id = req.user.id;
     const balance = await client.query(
       `SELECT balance FROM users
       WHERE id = $1`,
@@ -800,7 +801,6 @@ exports.updateBalance = async (req, res) => {
 exports.updateNotification = async (req, res) => {
   try {
     const { user_id, id } = req.body;
-    console.log(id)
     await client.query(
       `UPDATE notifications
       SET read = $1

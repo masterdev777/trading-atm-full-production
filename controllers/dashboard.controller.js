@@ -129,6 +129,7 @@ exports.addMasterAccount = async (req, res) => {
     const master_data = await client.query("SELECT * FROM masters WHERE account_id=$1", [
       acc_id,
     ]);
+    console.log("account name: ", acc_name, "account id: ", acc_id, "account email: ", acc_email, "account password: ", acc_password, "server name: ", server_name, "type: ", type);
     if (master_data.rowCount === 0) {
       const copier_data = await client.query(
         `SELECT * 
@@ -328,6 +329,7 @@ exports.addCopierAccount = async (req, res) => {
     const server_name = JSON.parse(decryptData(encrypted_server_name));
     const type = JSON.parse(decryptData(encrypted_type));
     const id = JSON.parse(decryptData(encrypted_id));
+    console.log("account name: ", acc_name, "account id: ", acc_id, "account email: ", acc_email, "account password: ", acc_password, "server name: ", server_name, "type: ", type);
     const copier_data = await client.query("SELECT * FROM copiers WHERE account_id=$1", [
       acc_id,
     ]);
