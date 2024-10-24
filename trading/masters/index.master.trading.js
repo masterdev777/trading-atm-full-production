@@ -1,21 +1,21 @@
 const { getSocketInstance, socketUsers } = require("../../socket/socket.js");
-
 const { tokenUpdate } = require("../tokens/index.token.update.js");
 
 const { getMetatrader4MasterHistoryOrders,
   getMetatrader4OrderPair,
   runMetatrader4TradingFunction } = require("./metatrader4.master.trading.js");
-const { getMetatrader5MasterHistoryOrders,
-  getMetatrader5OrderPair,
-  runMetatrader5TradingFunction } = require("./metatrader5.master.trading.js");
+  const { getMetatrader5MasterHistoryOrders,
+    getMetatrader5OrderPair,
+    runMetatrader5TradingFunction } = require("./metatrader5.master.trading.js");
 const { getTradelockerMasterHistoryPositions,
   getTradelockerMasterHistoryOrders,
   getTradelockerPositionPair,
   runTradelockerTradingFunction } = require("./tradelocker.master.trading.js");
-
-const { getTradelockerCopiersPL } = require('../copiers/tradelocker.copier.trading');
+  
+  const { getTradelockerCopiersPL } = require('../copiers/tradelocker.copier.trading');
 const { getMetatrader4CopiersPL } = require('../copiers/metatrader4.copier.trading');
 const { getMetatrader5CopiersPL } = require('../copiers/metatrader5.copier.trading');
+
 
 const startFunc = () => {
   const io = getSocketInstance();

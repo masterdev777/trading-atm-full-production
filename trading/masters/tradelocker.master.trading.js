@@ -8,6 +8,8 @@ const { metatrader5Axios } = require("../config/metatrader5.config.js");
 
 const MY_NAMESPACE = uuidv5("https://tradingatmstg.wpenginepowered.com/", uuidv5.DNS);
 
+const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
 //This function is to initialize the previous positions (history_positions) of masters in database before start trading
 
 const getTradelockerMasterHistoryPositions = async (callback) => {
@@ -296,8 +298,6 @@ const getTradelockerPositionPair = async (callback) => {
         console.log("!!!!!!!!!!Get Metatrader4 Opened Order Error.");
       })
     }
-    console.log("tradelocker my master id", copier.my_master_id)
-    console.log("---------------> performance <----------------", performance.now())
   }
   //   if (copier.my_master_type === 'tld' || copier.my_master_type === 'tll') {
   //     const master = await client.query(
@@ -608,7 +608,7 @@ const calc_volume = (master_account_balance, copier_account_balance, risk_type, 
 
 const runTradelockerTradingFunction = async (io, socketUsers) => {
   indexNum++;
-  console.log(indexNum, "Tradelocker-master ----------> Start Run Trading Function", performance.now());
+  // console.log(indexNum, "Tradelocker-master ----------> Start Run Trading Function", performance.now());
   //get all masters data
   const masterData = await client.query(
     `SELECT * FROM masters`
@@ -1103,7 +1103,7 @@ const runTradelockerTradingFunction = async (io, socketUsers) => {
                         data: {
                           "price": 0,
                           "qty": volume,
-                          "routeId": parseInt(current_position[2]),
+                          "routeId": copier_acc_type === "tld" ? 9912 : 900,
                           "side": current_position[3],
                           "stopLoss": stopLoss,
                           "stopLossType": "absolute",
@@ -1123,6 +1123,7 @@ const runTradelockerTradingFunction = async (io, socketUsers) => {
                             console.log("Tradelocker-master ----------> copier order not success");
                             return;
                           }
+                          await delay(500);
                           const orderId = response.data.d.orderId;
                           await myAxiosRequest.get(`/trade/accounts/${copier_acc_id}/ordersHistory?tradableInstrumentId=${parseInt(current_position[1])}`, {
                             headers: {

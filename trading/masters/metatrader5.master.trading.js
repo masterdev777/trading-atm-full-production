@@ -216,8 +216,6 @@ const getMetatrader5OrderPair = async (callback) => {
         })
       })
     }
-    console.log("mt5 my master id", copier.my_master_id)
-    console.log("---------------> performance <----------------", performance.now())
   }
   callback();
 }
@@ -414,7 +412,7 @@ const calc_nearest_int = (input_number) => {
 
 const runMetatrader5TradingFunction = async (io, socketUsers) => {
   indexNum++;
-  console.log(indexNum, "metatrader5-master ----------> Start Run Trading Function", performance.now());
+  // console.log(indexNum, "metatrader5-master ----------> Start Run Trading Function", performance.now());
   //get all masters data
   const masterData = await client.query(
     `SELECT * FROM metatrader5_masters`
@@ -1174,7 +1172,7 @@ const runMetatrader5TradingFunction = async (io, socketUsers) => {
                       data: {
                         "price": 0,
                         "qty": volume,
-                        "routeId": 9912,
+                        "routeId": copier_acc_type === 'tld' ? 9912 : 900,
                         "side": opened_order.orderType,
                         "stopLoss": stopLoss,
                         "stopLossType": "absolute",

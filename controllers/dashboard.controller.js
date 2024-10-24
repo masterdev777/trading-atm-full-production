@@ -129,7 +129,6 @@ exports.addMasterAccount = async (req, res) => {
     const master_data = await client.query("SELECT * FROM masters WHERE account_id=$1", [
       acc_id,
     ]);
-    console.log("account name: ", acc_name, "account id: ", acc_id, "account email: ", acc_email, "account password: ", acc_password, "server name: ", server_name, "type: ", type);
     if (master_data.rowCount === 0) {
       const copier_data = await client.query(
         `SELECT * 
@@ -329,7 +328,6 @@ exports.addCopierAccount = async (req, res) => {
     const server_name = JSON.parse(decryptData(encrypted_server_name));
     const type = JSON.parse(decryptData(encrypted_type));
     const id = JSON.parse(decryptData(encrypted_id));
-    console.log("account name: ", acc_name, "account id: ", acc_id, "account email: ", acc_email, "account password: ", acc_password, "server name: ", server_name, "type: ", type);
     const copier_data = await client.query("SELECT * FROM copiers WHERE account_id=$1", [
       acc_id,
     ]);
@@ -1049,7 +1047,10 @@ exports.getMastersList = async (req, res) => {
         for (let i = 0; i < user.follow_account?.length; i++) {
           if (user.follow_account[i].type === item.type && user.follow_account[i].account_id === item.account_id) {
             index++;
-            if (index > current_page * display_count && index <= (current_page + 1) * display_count) return item;
+            if (index > current_page * display_count && index <= (current_page + 1) * display_count) {
+                item.favorite = true;
+                return item;
+              }
           }
         }
       });
@@ -1058,7 +1059,10 @@ exports.getMastersList = async (req, res) => {
         for (let i = 0; i < user.follow_account?.length; i++) {
           if (user.follow_account[i].type === item.type && user.follow_account[i].account_id === item.account_id) {
             index++;
-            if (index > current_page * display_count && index <= (current_page + 1) * display_count) return item;
+            if (index > current_page * display_count && index <= (current_page + 1) * display_count) {
+              item.favorite = true;
+              return item;
+            }
           }
         }
       });
@@ -1067,7 +1071,10 @@ exports.getMastersList = async (req, res) => {
         for (let i = 0; i < user.follow_account?.length; i++) {
           if (user.follow_account[i].type === item.type && user.follow_account[i].account_id === item.account_id) {
             index++;
-            if (index > current_page * display_count && index <= (current_page + 1) * display_count) return item;
+            if (index > current_page * display_count && index <= (current_page + 1) * display_count) {
+              item.favorite = true;
+              return item;
+            }
           }
         }
       });
@@ -1137,11 +1144,24 @@ exports.addFollowMasterAccount = async (req, res) => {
         SET follow_account = array_append(follow_account, $1) 
         WHERE id = ${my_user_id}`,
       [
-        JSON.stringify(new_follower)
+        new_follower
       ]
-    )
+    );
+    const table_name = (type === "tld" || type === "tll") ? "masters" : type === "mt4" ? "metatrader_masters" : "metatrader5_masters";
+    const favorite_users = await client.query(
+      `UPDATE ${table_name}
+      SET favorite_users = array_append(favorite_users, $1)
+      WHERE account_id = $2
+      RETURNING favorite_users`,
+      [
+        {
+          user_id: my_user_id
+        },
+        acc_id
+      ]
+    );
     if (updatedMyData.rowCount > 0) {
-      const encryptedResponse = encryptWithSymmetricKey("ok");
+      const encryptedResponse = encryptWithSymmetricKey({favorite_count: favorite_users.rows[0].favorite_users?.length > 0 ? favorite_users.rows[0].favorite_users?.length : 0});
       await res.status(200).send({ encrypted: encryptedResponse });
     }
   }
@@ -1167,9 +1187,22 @@ exports.removeFollowMasterAccount = async (req, res) => {
       [
         JSON.stringify(remove_account)
       ]
-    )
+    );
+    const table_name = (type === "tld" || type === "tll") ? "masters" : type === "mt4" ? "metatrader_masters" : "metatrader5_masters";
+    const favorite_users = await client.query(
+      `UPDATE ${table_name}
+      SET favorite_users = array_remove(favorite_users, $1)
+      WHERE account_id = $2
+      RETURNING favorite_users`,
+      [
+        {
+          user_id: my_user_id,
+        },
+        acc_id
+      ]
+    );
     if (updatedMyData.rowCount > 0) {
-      const encryptedResponse = encryptWithSymmetricKey("ok");
+      const encryptedResponse = encryptWithSymmetricKey({ favorite_count: favorite_users.rows[0].favorite_users?.length > 0 ? favorite_users.rows[0].favorite_users?.length : 0 });
       res.status(200).send({ encrypted: encryptedResponse });
     }
   }

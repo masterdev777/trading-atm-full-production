@@ -1,4 +1,5 @@
 const client = require("../../config/db/db.js");
+
 const { tradelockerDemoAxios, tradelockerLiveAxios } = require("../config/tradelocker.config.js");
 
 //Catch the change event of Tradelocker Copier Account and get information Function
@@ -62,7 +63,6 @@ const getTradelockerCopiersPL = async () => {
             if (!exist_one) return;
             const pl = parseFloat(history_position[9]);
             const account_balance = account_pl.rows[0].account_balance;
-            console.log(account_balance)
             const lot_size = cur_position ? parseFloat(history_position[4]) - parseFloat(cur_position[4]) : parseFloat(history_position[4]);
             const real_pl = cur_position ? (lot_size * 100) / (parseFloat(history_position[4]) * 100) * pl : pl;
             const total_pl = account_pl.rows[0].total_pl_amount + real_pl;
