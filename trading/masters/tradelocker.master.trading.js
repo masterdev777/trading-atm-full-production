@@ -47,6 +47,7 @@ const getTradelockerMasterHistoryPositions = async (callback) => {
   })
 
   await Promise.all(getMasterHistoryP);
+  await delay(5000);
   callback();
 }
 
