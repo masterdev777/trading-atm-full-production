@@ -528,7 +528,9 @@ exports.getAccountData = async (req, res) => {
           lose_count, 
           master_pl, 
           registered_at,
-          about_me FROM ${table_name} 
+          about_me,
+          private_account 
+          FROM ${table_name} 
           WHERE account_id = '${account_id}'
           AND type = '${type}'`
       );
