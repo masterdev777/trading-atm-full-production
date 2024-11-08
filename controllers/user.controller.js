@@ -12,7 +12,8 @@ const moment = require("moment");
 //Register Endpoint
 exports.register = async (req, res) => {
   try {
-    const { username, email, password } = req.body;
+    const decryptedData = JSON.parse(decryptData(req.body.encrypted));
+    const { username, email, password } = decryptedData;
     console.log("Register ---------------------->", email, password);
     const userExists = await emailExists(email);
     const isFirstUser = await firstUser();
@@ -57,10 +58,11 @@ exports.register = async (req, res) => {
         const flag = await this.sendVerifyEmail(token, data.rows[0]);
         if (flag) {
           console.log(username, email, password);
-          await res.status(200).send({
+          const encryptedResponse = encryptWithSymmetricKey({
             token: token,
             user: data.rows[0]
           });
+          await res.status(200).send({ encrypted: encryptedResponse });
         }
         else res.status(203).send("Email Send Error!")
       }
@@ -102,7 +104,8 @@ exports.sendVerifyEmail = async (token, user) => {
 //Send Email Endpoint
 exports.sendEmail = async (req, res) => {
   try {
-    const flag = await this.sendVerifyEmail(req.body.token, req.body.user);
+    const user = JSON.parse(decryptData(req.body.encryptedUser));
+    const flag = await this.sendVerifyEmail(req.body.token, user);
     if (flag) res.status(200).send("ok");
   }
   catch {
@@ -113,18 +116,20 @@ exports.sendEmail = async (req, res) => {
 //Send Verify Code Endpoint
 exports.sendVerifyCode = async (req, res) => {
   try {
+    const decryptedData = JSON.parse(decryptData(req.body.encrypted));
+    const { email } = decryptedData;
     const randomNumber = crypto.randomInt(100000, 1000000);
     const data = await client.query(
       `UPDATE users 
         SET verify_code = ${randomNumber} 
-        WHERE email = '${req.body.email}' RETURNING *`
+        WHERE email = '${email}' RETURNING *`
     )
     if (data.rowCount === 0) res.status(201).send("You are not registered. Please sign up with your email.");
     else {
       const templateParams = {
         to_name: data.rows[0].username,
         from_name: "TradingATM",
-        recipient: req.body.email,
+        recipient: email,
         message: randomNumber
       };
       const serviceID = "service_mt4brv8";
@@ -134,12 +139,12 @@ exports.sendVerifyCode = async (req, res) => {
         privateKey: 'TZiuJMoAKS4oBzFG63Q0a'
       }
       const response = await emailjs.send(serviceID, templateID, templateParams, userID);
-      console.log(req.body.email, 'verify code send success', response.status, response.text);
+      console.log(email, 'verify code send success', response.status, response.text);
       res.status(200).send("success");
     }
   }
   catch (err) {
-    console.log(req.body.email, 'verify code send failed', err);
+    console.log(email, 'verify code send failed', err);
     res.status(501).send("Server Error");
   }
 }
@@ -147,13 +152,15 @@ exports.sendVerifyCode = async (req, res) => {
 //Check if Verify Code is correct Endpoint 
 exports.checkVerifyCode = async (req, res) => {
   try {
+    const decryptedData = JSON.parse(decryptData(req.body.encrypted));
+    const { email, verifyCode } = decryptedData;
     const data = await client.query(
       `SELECT * FROM users 
-        WHERE email = '${req.body.email}'`
+        WHERE email = '${email}'`
     );
     if (data.rowCount === 0) res.status(201).send("Database Error");
     else {
-      if (req.body.verifyCode === data.rows[0].verify_code) {
+      if (verifyCode === data.rows[0].verify_code) {
         res.status(200).send("ok");
       }
       else res.status(202).send("Verify Code Invalid");
@@ -167,13 +174,15 @@ exports.checkVerifyCode = async (req, res) => {
 //Change Password Endpoint
 exports.changePassword = async (req, res) => {
   try {
+    const decryptedData = JSON.parse(decryptData(req.body.encrypted));
+    const { email, password } = decryptedData;
     const salt = await bcrypt.genSalt(10);
-    const hash = await bcrypt.hash(req.body.password, salt);
+    const hash = await bcrypt.hash(password, salt);
 
     const data = await client.query(
       `UPDATE users 
         SET password = '${hash}'  
-        WHERE email = '${req.body.email}'`
+        WHERE email = '${email}'`
     );
     if (data.rowCount === 0) res.status(201).send("Database Error");
     else {
@@ -377,11 +386,12 @@ exports.tokenVerification = async (req, res) => {
         if (data.rowCount === 0) res.status(201).send("Failed.");
         else {
           const accounts = await this.getMyAllAccounts(data.rows[0]);
-          await res.status(200).send({
+          const encryptedResponse = encryptWithSymmetricKey({
             token: getToken(data.rows[0]),
             user: data.rows[0],
             accounts: accounts
-          })
+          });
+          await res.status(200).send({ encrypted: encryptedResponse });
         }
       }
     });
@@ -417,8 +427,8 @@ exports.login = async (req, res) => {
           req.user.id,
           false
         ]
-      )
-      await res.status(200).send({
+      );
+      const encryptedResponse = encryptWithSymmetricKey({
         token: getToken(data.rows[0]),
         user: data.rows[0],
         accounts: accounts,
@@ -426,15 +436,17 @@ exports.login = async (req, res) => {
         copier_plan_price: copier_price.rows[0].price,
         messages: messages.rows
       });
+      await res.status(200).send({ encrypted: encryptedResponse });
     }
     else {
       const token = getToken(data.rows[0]);
       const flag = await this.sendVerifyEmail(token, data.rows[0]);
       if (flag) {
-        await res.status(201).send({
+        const encryptedResponse = encryptWithSymmetricKey({
           token: token,
           user: data.rows[0],
         });
+        await res.status(201).send({ encrypted: encryptedResponse });
       }
     }
   }
@@ -477,14 +489,15 @@ exports.loginWithToken = async (req, res) => {
             ]
           );
           const accounts = await this.getMyAllAccounts(data.rows[0]);
-          await res.status(200).send({
+          const encryptedResponse = encryptWithSymmetricKey({
             token: getToken(data.rows[0]),
             user: data.rows[0],
             accounts: accounts,
             levelToLimit: levelToLimit.rows,
             copier_plan_price: copier_price.rows[0].price,
             messages: messages.rows
-          })
+          });
+          await res.status(200).send({ encrypted: encryptedResponse })
         }
       }
     });
@@ -498,10 +511,11 @@ exports.loginWithToken = async (req, res) => {
 exports.getUserData = async (req, res) => {
   try {
     const accounts = await this.getMyAllAccounts(req.user);
-    await res.status(200).send({
+    const encryptedResponse = encryptWithSymmetricKey({
       user: req.user,
       accounts: accounts
-    })
+    });
+    await res.status(200).send({ encrypted: encryptedResponse })
   }
   catch {
     await res.status(501).send("Getting Data Failed!")
@@ -802,7 +816,7 @@ exports.updateBalance = async (req, res) => {
 
 exports.updateNotification = async (req, res) => {
   try {
-    const { user_id, id } = req.body;
+    const { user_id, id } = JSON.parse(decryptData(req.body.encrypted));
     await client.query(
       `UPDATE notifications
       SET read = $1
@@ -821,7 +835,8 @@ exports.updateNotification = async (req, res) => {
         user_id
       ]
     );
-    await res.status(200).send(data.rowCount > 0 ? data.rows : []);
+    const encryptedResponse = encryptWithSymmetricKey(data.rowCount > 0 ? data.rows : []);
+    await res.status(200).send({ encrypted: encryptedResponse });
   }
   catch {
     await res.status(501).send("Server error!");

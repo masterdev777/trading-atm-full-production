@@ -4,6 +4,7 @@ var express = require("express"),
     cors = require("cors"),
     methodOverride = require("method-override"),
     path = require("path"),
+    rateLimiter = require("./middlewares/rateLimiter"),
     routers = require("./routers");
 
 module.exports = () => {
@@ -19,6 +20,7 @@ module.exports = () => {
     // app.use(bodyParser.urlencoded({ limit: "1mb", extended: true }));
     app.use(cors());
     app.use(morgan("dev"));
+    app.use(rateLimiter);
     morgan.token('ip', (req) => {
         // console.log("Ip adress =>>>>>", req.socket.remoteAddress)
         return req.headers['x-forwarded-for'] || req.socket.remoteAddress;

@@ -13,7 +13,7 @@ const MY_NAMESPACE = uuidv5("https://tradingatmstg.wpenginepowered.com/", uuidv5
 //Delete Trading Account From our Platform Endpoint
 exports.deleteAccount = async (req, res) => {
   try {
-    const { type, acc_id, acc_role } = req.body;
+    const { type, acc_id, acc_role } = JSON.parse(decryptData(req.body.encrypted));
     const user = req.user;
     const database_name = (type === 'tll' || type === 'tld') ? (acc_role === "Master" ? "masters" : "copiers") :
       type === 'mt4' ? (acc_role === "Master" ? "metatrader_masters" : "metatrader_copiers") :
@@ -62,7 +62,7 @@ exports.deleteAccount = async (req, res) => {
 
 exports.getMasterLevelByAccountId = async (req, res) => {
   try {
-    const { account_id, type } = req.body;
+    const { account_id, type } = JSON.parse(decryptData(req.body.encrypted));
     const user_id = req.user.id;
     const table_name = (type === "tld" || type === "tll") ? "masters" : type === "mt4" ? "metatrader_masters" : "metatrader5_masters";
     const account = await client.query(
@@ -83,7 +83,8 @@ exports.getMasterLevelByAccountId = async (req, res) => {
         account.rows[0].level
       ]
     );
-    await res.status(200).send({ levelIndex: level.rows[0].id - 1 });
+    const encryptedResponse = encryptWithSymmetricKey({ levelIndex: level.rows[0].id - 1 });
+    await res.status(200).send({ encrypted: encryptedResponse });
   }
   catch {
     await res.status(501).send("Server Error");
@@ -1556,8 +1557,6 @@ exports.updateMasterDescription = async (req, res) => {
     const formattedDate = myDate.toISOString();
     const unit = 7 * 24 * 60 * 60 * 1000;
     const stamp = myDate - prev_profit_share_update_date;
-    console.log(prev_profit_share?.per_hour, profitShare?.per_hour);
-    console.log(prev_description, description);
     if (prev_is_profit_share === is_profit_share 
       && prev_profit_share?.per_hour === profitShare?.per_hour 
       && prev_description === description 
@@ -1574,7 +1573,7 @@ exports.updateMasterDescription = async (req, res) => {
             is_profit_share = $2,
             profit_share = $3,
             profit_share_update_date = $4,
-            private_account = $5,
+            private_account = $5
             WHERE account_id = $6
             RETURNING user_id, account_id, type, account_name`,
             [
@@ -2000,7 +1999,7 @@ exports.startTrading = async (req, res) => {
     }
     else {
       const success = await this.startTradingFunc(copier_acc_id, copier_acc_type, master_acc_id, my_master_type);
-      const encryptedResponse = encryptWithSymmetricKey("ok")
+      const encryptedResponse = encryptWithSymmetricKey("ok");
       if (success) await res.status(200).send({ encrypted: encryptedResponse });
     }
   }
@@ -2341,7 +2340,7 @@ exports.getCopierByAccountId = async (req, res) => {
 
 exports.updateProfitShareMethod = async (req, res) => {
   try {
-    const { account_id, type, profit_share_method, follow_profit_share_change } = req.body;
+    const { account_id, type, profit_share_method, follow_profit_share_change } = JSON.parse(decryptData(req.body.encrypted));
     const table_name = (type === 'tld' || type === 'tll') ? 'copiers' : type === "mt4" ? 'metatrader_copiers' : 'metatrader5_copiers';
     const update_data = await client.query(
       `UPDATE ${table_name}
@@ -2364,7 +2363,8 @@ exports.updateProfitShareMethod = async (req, res) => {
       ]
     );
     if (update_data.rowCount > 0) {
-      res.status(200).send(update_data.rows[0]);
+      const encryptedResponse = encryptWithSymmetricKey(update_data.rows[0]);
+      await res.status(200).send({ encrypted: encryptedResponse });
     }
   }
   catch {
@@ -2374,17 +2374,27 @@ exports.updateProfitShareMethod = async (req, res) => {
 
 exports.updateCopierRiskSettings = async (req, res) => {
   try {
-    const { accountId,
-      accountType,
-      riskType,
-      riskSetting,
-      isForceMax,
-      isForceMin,
-      forceMaxValue,
-      forceMinValue,
-      isLotRefine,
-      lotRefineSize,
+    const { encrypted_accountId,
+      encrypted_accountType,
+      encrypted_riskType,
+      encrypted_riskSetting,
+      encrypted_isForceMax,
+      encrypted_isForceMin,
+      encrypted_forceMaxValue,
+      encrypted_forceMinValue,
+      encrypted_isLotRefine,
+      encrypted_lotRefineSize,
     } = req.body;
+    const accountId = JSON.parse(decryptData(encrypted_accountId));
+    const accountType = JSON.parse(decryptData(encrypted_accountType));
+    const riskType = JSON.parse(decryptData(encrypted_riskType));
+    const riskSetting = JSON.parse(decryptData(encrypted_riskSetting));
+    const isForceMax = JSON.parse(decryptData(encrypted_isForceMax));
+    const isForceMin = JSON.parse(decryptData(encrypted_isForceMin));
+    const forceMaxValue = JSON.parse(decryptData(encrypted_forceMaxValue));
+    const forceMinValue = JSON.parse(decryptData(encrypted_forceMinValue));
+    const isLotRefine = JSON.parse(decryptData(encrypted_isLotRefine));
+    const lotRefineSize = JSON.parse(decryptData(encrypted_lotRefineSize));
     const forceMinMax = {
       force_max: isForceMax,
       force_min: isForceMin,
@@ -2417,33 +2427,46 @@ exports.updateCopierRiskSettings = async (req, res) => {
       ]
     );
     if (update_data.rowCount > 0) {
-      res.status(200).send(update_data.rows[0]);
+      const encryptedResponse = encryptWithSymmetricKey(update_data.rows[0]);
+      await res.status(200).send({ encrypted: encryptedResponse });
     }
     else {
-      res.status(201).send("Database insert error!");
+      await res.status(201).send("Database insert error!");
     }
   }
   catch {
-    res.status(501).send("Server Error!");
+    await res.status(501).send("Server Error!");
   }
 }
 
 exports.updateCopierPositionSettings = async (req, res) => {
   try {
     const {
-      accountId,
-      accountType,
-      takeProfit,
-      stopLoss,
-      fixedStopLoss,
-      fixedTakeProfit,
-      fixedStopLossSize,
-      fixedTakeProfitSize,
-      stopLossRefinement,
-      takeProfitRefinement,
-      stopLossRefinementSize,
-      takeProfitRefinementSize
+      encrypted_accountId,
+      encrypted_accountType,
+      encrypted_takeProfit,
+      encrypted_stopLoss,
+      encrypted_fixedStopLoss,
+      encrypted_fixedTakeProfit,
+      encrypted_fixedStopLossSize,
+      encrypted_fixedTakeProfitSize,
+      encrypted_stopLossRefinement,
+      encrypted_takeProfitRefinement,
+      encrypted_stopLossRefinementSize,
+      encrypted_takeProfitRefinementSize
     } = req.body;
+    const accountId = JSON.parse(decryptData(encrypted_accountId));
+    const accountType = JSON.parse(decryptData(encrypted_accountType));
+    const takeProfit = JSON.parse(decryptData(encrypted_takeProfit));
+    const stopLoss = JSON.parse(decryptData(encrypted_stopLoss));
+    const fixedStopLoss = JSON.parse(decryptData(encrypted_fixedStopLoss));
+    const fixedTakeProfit = JSON.parse(decryptData(encrypted_fixedTakeProfit));
+    const fixedStopLossSize = JSON.parse(decryptData(encrypted_fixedStopLossSize));
+    const fixedTakeProfitSize = JSON.parse(decryptData(encrypted_fixedTakeProfitSize));
+    const stopLossRefinement = JSON.parse(decryptData(encrypted_stopLossRefinement));
+    const takeProfitRefinement = JSON.parse(decryptData(encrypted_takeProfitRefinement));
+    const stopLossRefinementSize = JSON.parse(decryptData(encrypted_stopLossRefinementSize));
+    const takeProfitRefinementSize = JSON.parse(decryptData(encrypted_takeProfitRefinementSize));
     const follow_tp_st = {
       stop_loss: stopLoss === 0 ? true : false,
       take_profit: takeProfit === 0 ? true : false,
@@ -2476,7 +2499,8 @@ exports.updateCopierPositionSettings = async (req, res) => {
       ]
     );
     if (update_data.rowCount > 0) {
-      res.status(200).send(update_data.rows[0]);
+      const encryptedResponse = encryptWithSymmetricKey(update_data.rows[0]);
+      res.status(200).send({ encrypted: encryptedResponse });
     }
     else {
       res.status(201).send("Database insert error!");
@@ -2542,7 +2566,6 @@ exports.getCopierTradingHistory = async (req, res) => {
       ]
     );
     const tradingHistory = contract.rows[0]?.pay_history;
-    console.log(tradingHistory)
     const filtered_data = tradingHistory?.filter((history, index) => {
       if (index >= current_page * display_count && index < (current_page + 1) * display_count) return history;
     });

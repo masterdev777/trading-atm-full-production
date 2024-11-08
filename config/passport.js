@@ -4,7 +4,7 @@ const JwtStrategy = require('passport-jwt').Strategy;
 const ExtractJwt = require('passport-jwt').ExtractJwt;
 const config = require('./config');
 const { emailExists, search_by_id, matchPassword } = require("./helper");
-
+const { decryptData } = require("./utils/encryptFunction.js");
 
 const jwtOptions = {
     jwtFromRequest: ExtractJwt.fromHeader('authorization'),
@@ -21,10 +21,11 @@ module.exports = () => {
             },
             async (email, password, done) => {
                 try {
-                    console.log(email, password);
-                    const user = await emailExists(email);
+                    const decryptedEmail = JSON.parse(decryptData(email));
+                    const decryptedPassword = JSON.parse(decryptData(password));
+                    const user = await emailExists(decryptedEmail);
                     if (!user) return done(null, false);
-                    const isMatch = await matchPassword(password, user.password);
+                    const isMatch = await matchPassword(decryptedPassword, user.password);
                     if (!isMatch) return done(null, false);
                     return done(null, { id: user.id, email: user.email });
                 } catch (error) {

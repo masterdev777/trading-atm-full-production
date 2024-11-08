@@ -1,1 +1,0 @@
-import{j as e}from"./index-C3s5vc-C.js";const t=({value:s,handleChange:c})=>e.jsx(e.Fragment,{children:e.jsxs("label",{className:"flex items-center",children:[e.jsx("input",{type:"checkbox",id:"custom-checkbox",checked:s,onChange:c}),e.jsx("span",{className:"custom-checkbox"})]})});export{t as C};
